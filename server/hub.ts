@@ -18,6 +18,8 @@ function isValidClientMsg(m: unknown): m is ClientMsg {
       return typeof msg.sessionId === 'string'
     case 'set_model':
       return typeof msg.sessionId === 'string' && (msg.model === null || typeof msg.model === 'string')
+    case 'set_effort':
+      return typeof msg.sessionId === 'string' && (msg.effort === null || typeof msg.effort === 'string')
     default:
       return false
   }

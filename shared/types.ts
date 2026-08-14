@@ -16,8 +16,10 @@ export interface SessionMeta {
   projectName: string
   title: string
   sdkSessionId: string | null
-  /** alias do modelo (ex.: 'opus', 'sonnet', 'haiku'); null = padrão da assinatura */
+  /** id do modelo (ex.: 'claude-opus-5', 'claude-fable-5'); null = padrão da assinatura */
   model: string | null
+  /** nível de esforço/raciocínio ('low'..'max'); null = padrão do modelo (high) */
+  effort: string | null
   open: boolean
   status: CardStatus
   attention: Attention
@@ -61,6 +63,7 @@ export type ClientMsg =
   | { type: 'interrupt'; sessionId: string }
   | { type: 'mark_read'; sessionId: string }
   | { type: 'set_model'; sessionId: string; model: string | null }
+  | { type: 'set_effort'; sessionId: string; effort: string | null }
 
 export type ServerMsg =
   | {

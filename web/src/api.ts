@@ -17,10 +17,10 @@ export const api = {
     j<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name, path }) }),
   removeProject: (id: string) =>
     j<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  newSession: (projectId: string, prompt: string, model: string | null) =>
+  newSession: (projectId: string, prompt: string, model: string | null, effort: string | null) =>
     j<SessionMeta>('/api/sessions', {
       method: 'POST',
-      body: JSON.stringify({ projectId, prompt, model }),
+      body: JSON.stringify({ projectId, prompt, model, effort }),
     }),
   closeSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/close`, { method: 'POST' }),

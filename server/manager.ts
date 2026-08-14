@@ -1,5 +1,6 @@
 import {
   query,
+  type EffortLevel,
   type PermissionResult,
   type Query,
   type SDKMessage,
@@ -84,6 +85,7 @@ export class SessionManager {
       // o servidor acabou de subir: nada está rodando
       s.status = 'idle'
       s.model = s.model ?? null // compat com sessões salvas antes do seletor de modelo
+      s.effort = s.effort ?? null
       this.sessions.set(s.id, s)
     }
   }
@@ -101,7 +103,12 @@ export class SessionManager {
     return { type: 'snapshot', projects: this.projects.list(), sessions, transcripts, permissions }
   }
 
-  createSession(projectId: string, prompt: string, model?: string | null): SessionMeta {
+  createSession(
+    projectId: string,
+    prompt: string,
+    model?: string | null,
+    effort?: string | null,
+  ): SessionMeta {
     const project = this.projects.get(projectId)
     if (!project) throw new Error('Projeto não encontrado')
     const session: SessionMeta = {
@@ -111,6 +118,7 @@ export class SessionManager {
       title: fallbackTitle(prompt),
       sdkSessionId: null,
       model: model && model.trim() ? model.trim() : null,
+      effort: effort && effort.trim() ? effort.trim() : null,
       open: true,
       status: 'idle',
       attention: null,
@@ -184,6 +192,17 @@ export class SessionManager {
     // se há uma sessão viva, aplica já (vale a partir do próximo turno)
     const live = this.live.get(sessionId)
     if (live) void live.q.setModel(next ?? undefined).catch(() => {})
+  }
+
+  setEffort(sessionId: string, effort: string | null): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const next = effort && effort.trim() ? effort.trim() : null
+    if (session.effort === next) return
+    this.touch(session, { effort: next })
+    const live = this.live.get(sessionId)
+    // aplica ao vivo (escopo da sessão); vale a partir do próximo turno
+    if (live) void live.q.applyFlagSettings({ effortLevel: next as EffortLevel | null }).catch(() => {})
   }
 
   closeCard(sessionId: string): void {
@@ -289,6 +308,7 @@ export class SessionManager {
         cwd: project.path,
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(session.model ? { model: session.model } : {}),
+        ...(session.effort ? { effort: session.effort as EffortLevel } : {}),
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',

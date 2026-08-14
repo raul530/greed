@@ -319,9 +319,12 @@ kbd {
   border-radius: 6px;
   font-size: 11px;
   padding: 2px 4px;
-  margin-right: 4px;
-  max-width: 92px;
+  max-width: 86px;
   cursor: pointer;
+}
+
+.model-select.effort-select {
+  max-width: 78px;
 }
 
 .model-select:hover {
@@ -331,6 +334,23 @@ kbd {
 .model-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* modelo/esforço lado a lado no modal */
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field-row label {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 6px 0 12px;
 }
 
 .status-dot {

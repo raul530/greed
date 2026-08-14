@@ -240,6 +240,7 @@ export function App() {
                 send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
               }
               onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
+              onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}
               registerInput={(el) => {
                 if (el) inputRefs.current.set(s.id, el)
                 else inputRefs.current.delete(s.id)

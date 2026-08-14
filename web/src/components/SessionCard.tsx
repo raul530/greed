@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
-import { MODELS } from '../models'
+import { EFFORTS, MODELS } from '../models'
 import { Transcript } from './Transcript'
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   onSeen: () => void
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
   onSetModel: (model: string | null) => void
+  onSetEffort: (effort: string | null) => void
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
@@ -86,6 +87,18 @@ export function SessionCard(props: Props) {
             {MODELS.map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="model-select effort-select"
+            value={session.effort ?? ''}
+            title="Esforço de raciocínio (mais = mais consumo; vale no próximo turno)"
+            onChange={(e) => props.onSetEffort(e.target.value || null)}
+          >
+            {EFFORTS.map((x) => (
+              <option key={x.value} value={x.value}>
+                {x.value ? `⚡ ${x.label}` : 'Esforço'}
               </option>
             ))}
           </select>

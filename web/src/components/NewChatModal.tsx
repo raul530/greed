@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
-import { MODELS } from '../models'
+import { EFFORTS, MODELS } from '../models'
 
 interface Props {
   projects: Project[]
@@ -12,6 +12,7 @@ interface Props {
 export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
   const [model, setModel] = useState('')
+  const [effort, setEffort] = useState('')
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,7 +28,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     setBusy(true)
     setError(null)
     try {
-      await api.newSession(effectiveId, prompt, model || null)
+      await api.newSession(effectiveId, prompt, model || null, effort || null)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -58,16 +59,32 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                 ))}
               </select>
             </label>
-            <label>
-              Modelo
-              <select value={model} onChange={(e) => setModel(e.target.value)}>
-                {MODELS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="field-row">
+              <label>
+                Modelo
+                <select value={model} onChange={(e) => setModel(e.target.value)}>
+                  {MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Esforço
+                <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+                  {EFFORTS.map((x) => (
+                    <option key={x.value} value={x.value}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="field-hint">
+              Modelo com versão explícita (importa pro consumo). Esforço maior = mais raciocínio, mais
+              lento e mais consumo. Dá pra trocar os dois no card depois.
+            </p>
             <label>
               Primeiro prompt
               <textarea

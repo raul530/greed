@@ -39,6 +39,20 @@ Para rodar sem o Vite dev server: `npm run build` e depois `npm start`
 3. O **✕** só tira o card da tela — a sessão vai para o **Histórico** e pode ser
    reaberta a qualquer momento com contexto completo (resume do SDK).
 
+## Modelo e esforço por chat
+
+Cada card escolhe seu próprio **modelo** (com versão explícita — importa pro
+consumo: Opus 5, Opus 4.8, Sonnet 5, Fable 5, Haiku 4.5) e seu **esforço de
+raciocínio** (`low` → `max`; padrão do SDK é `high`). Define no "Novo chat" e
+troca a qualquer momento pelos dois seletores no cabeçalho do card — vale a
+partir do próximo turno (via `query.setModel` e `applyFlagSettings({ effortLevel })`
+do SDK). Esforço maior = mais raciocínio, mais lento e mais consumo.
+
+O modelo que aparece nos seletores é o que **vai** rodar; o que o modelo "acha"
+que é numa resposta não é confiável. Nota de consumo: o Claude Code faz uma
+chamada interna de Haiku por sessão (resumo/quota), então ela aparece no uso
+mesmo que o card esteja em outro modelo.
+
 ## Memória por projeto (clusters)
 
 Cada projeto é um **cluster de memória próprio**. Ao fim de cada turno, um modelo
