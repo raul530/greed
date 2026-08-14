@@ -183,6 +183,13 @@ export class SessionManager {
     if (session && session.attention) this.touch(session, { attention: null })
   }
 
+  /** caminho da pasta (working dir) do projeto de uma sessão, para salvar anexos. */
+  projectPathForSession(sessionId: string): string | null {
+    const session = this.sessions.get(sessionId)
+    if (!session) return null
+    return this.projects.get(session.projectId)?.path ?? null
+  }
+
   setModel(sessionId: string, model: string | null): void {
     const session = this.sessions.get(sessionId)
     if (!session) return

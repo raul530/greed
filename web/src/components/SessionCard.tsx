@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
+import { api } from '../api'
+import { shouldInline } from '../attachments'
 import { EFFORTS, MODELS } from '../models'
 import { Transcript } from './Transcript'
 
@@ -22,20 +24,82 @@ interface Props {
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
+type Attachment =
+  | { id: string; name: string; state: 'uploading' }
+  | { id: string; name: string; state: 'inline'; content: string }
+  | { id: string; name: string; state: 'file'; path: string }
+  | { id: string; name: string; state: 'error'; message: string }
+
 function StatusDot({ status }: { status: SessionMeta['status'] }) {
   const label = status === 'working' ? 'trabalhando' : status === 'waiting' ? 'esperando você' : 'idle'
   return <span className={`status-dot ${status}`} title={label} />
 }
 
+const newId = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random())
+
 export function SessionCard(props: Props) {
   const { session, entries, permissions, index, expanded, connected } = props
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [dragging, setDragging] = useState(false)
   const rootRef = useRef<HTMLElement | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  const uploading = attachments.some((a) => a.state === 'uploading')
+  const ready = attachments.filter((a) => a.state === 'inline' || a.state === 'file')
+
+  const addFiles = async (files: File[]) => {
+    for (const file of files) {
+      const id = newId()
+      if (shouldInline(file)) {
+        try {
+          const content = await file.text()
+          setAttachments((prev) => [...prev, { id, name: file.name, state: 'inline', content }])
+        } catch {
+          setAttachments((prev) => [
+            ...prev,
+            { id, name: file.name, state: 'error', message: 'falha ao ler' },
+          ])
+        }
+      } else {
+        setAttachments((prev) => [...prev, { id, name: file.name, state: 'uploading' }])
+        try {
+          const { path } = await api.uploadAttachment(session.id, file)
+          setAttachments((prev) =>
+            prev.map((a) => (a.id === id ? { id, name: file.name, state: 'file', path } : a)),
+          )
+        } catch (err) {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === id
+                ? { id, name: file.name, state: 'error', message: err instanceof Error ? err.message : 'falha' }
+                : a,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  const removeAttachment = (id: string) =>
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
 
   const submit = () => {
     const text = draft.trim()
-    if (!text || !connected) return
-    if (props.onSend(text)) setDraft('')
+    if ((!text && ready.length === 0) || !connected || uploading) return
+    let composed = text
+    for (const a of ready) {
+      if (a.state === 'inline') {
+        composed += `${composed ? '\n\n' : ''}----- arquivo anexado: ${a.name} -----\n${a.content}\n----- fim: ${a.name} -----`
+      } else if (a.state === 'file') {
+        composed += `${composed ? '\n\n' : ''}[arquivo anexado salvo em ./${a.path} — abra com Read/Edit]`
+      }
+    }
+    if (props.onSend(composed)) {
+      setDraft('')
+      setAttachments([])
+    }
   }
 
   const seen = () => {
@@ -55,6 +119,7 @@ export function SessionCard(props: Props) {
     session.status,
     session.attention ? `attn-${session.attention}` : '',
     expanded ? 'expanded' : '',
+    dragging ? 'dragging' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -66,6 +131,22 @@ export function SessionCard(props: Props) {
       onMouseDown={seen}
       onFocusCapture={seen}
       data-session={session.id}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault()
+          setDragging(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false)
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.files.length > 0) {
+          e.preventDefault()
+          setDragging(false)
+          void addFiles([...e.dataTransfer.files])
+        }
+      }}
     >
       <header className="card-head" onDoubleClick={props.onToggleExpand}>
         <div className="card-titles">
@@ -127,34 +208,71 @@ export function SessionCard(props: Props) {
         onPermission={props.onPermission}
       />
       <footer className="card-input">
-        <textarea
-          ref={props.registerInput}
-          value={draft}
-          rows={1}
-          placeholder={
-            !connected
-              ? 'Reconectando ao servidor…'
-              : session.status === 'waiting'
-                ? 'Responda o pedido de permissão acima…'
-                : 'Mensagem… (Enter envia, Shift+Enter quebra linha)'
-          }
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // não envia no meio de composição IME (acentos, CJK)
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              submit()
+        {attachments.length > 0 && (
+          <div className="attach-chips">
+            {attachments.map((a) => (
+              <span key={a.id} className={`attach-chip ${a.state}`} title={a.name}>
+                <span className="attach-icon">
+                  {a.state === 'uploading' ? '⏳' : a.state === 'error' ? '⚠' : '📎'}
+                </span>
+                <span className="attach-name">{a.name}</span>
+                <span className="attach-kind">
+                  {a.state === 'inline' ? 'texto' : a.state === 'file' ? 'arquivo' : a.state === 'error' ? a.message : 'enviando…'}
+                </span>
+                <button className="attach-x" title="Remover" onClick={() => removeAttachment(a.id)}>
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="input-row">
+          <button
+            className="attach-btn"
+            title="Anexar arquivo (.md, texto, código, ou qualquer arquivo)"
+            onClick={() => fileRef.current?.click()}
+          >
+            📎
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              if (e.target.files) void addFiles([...e.target.files])
+              e.target.value = ''
+            }}
+          />
+          <textarea
+            ref={props.registerInput}
+            value={draft}
+            rows={1}
+            placeholder={
+              !connected
+                ? 'Reconectando ao servidor…'
+                : session.status === 'waiting'
+                  ? 'Responda o pedido de permissão acima…'
+                  : 'Mensagem… (Enter envia, 📎 ou arraste p/ anexar)'
             }
-          }}
-        />
-        <button
-          className="send"
-          onClick={submit}
-          disabled={!draft.trim() || !connected}
-          title="Enviar"
-        >
-          ➤
-        </button>
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // não envia no meio de composição IME (acentos, CJK)
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+          />
+          <button
+            className="send"
+            onClick={submit}
+            disabled={(!draft.trim() && ready.length === 0) || !connected || uploading}
+            title={uploading ? 'Aguardando anexo…' : 'Enviar'}
+          >
+            ➤
+          </button>
+        </div>
       </footer>
     </section>
   )

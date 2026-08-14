@@ -53,6 +53,18 @@ que é numa resposta não é confiável. Nota de consumo: o Claude Code faz uma
 chamada interna de Haiku por sessão (resumo/quota), então ela aparece no uso
 mesmo que o card esteja em outro modelo.
 
+## Anexar arquivos
+
+Botão **📎** no input do card, ou **arraste e solte** o arquivo em cima do card.
+Comportamento inteligente:
+
+- **Texto pequeno** (`.md`, `.txt`, código… ≤ 64KB) → o conteúdo entra inline no
+  contexto da mensagem (o agente já lê direto, sem abrir arquivo).
+- **Grande ou binário** → é salvo em `greed-anexos/` dentro da pasta do projeto e
+  a mensagem referencia o caminho; o agente abre com Read/Edit (persiste e é
+  editável). Se a pasta do projeto for um repositório git, considere adicionar
+  `greed-anexos/` ao `.gitignore`.
+
 ## Memória por projeto (clusters)
 
 Cada projeto é um **cluster de memória próprio**. Ao fim de cada turno, um modelo

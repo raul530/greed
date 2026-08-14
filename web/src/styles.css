@@ -631,11 +631,83 @@ kbd {
 
 .card-input {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px 12px;
   border-top: 1px solid var(--border-soft);
   background: var(--card-head);
   flex: none;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.attach-btn {
+  flex: none;
+  align-self: flex-end;
+  padding: 6px 8px;
+  background: #10141a;
+  border: 1px solid var(--border);
+}
+
+.attach-btn:hover {
+  background: #1b212a;
+}
+
+/* chips de anexo pendente */
+.attach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background: #10141a;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 6px 3px 8px;
+  font-size: 12px;
+}
+
+.attach-chip.error {
+  border-color: rgba(255, 118, 118, 0.5);
+  color: var(--red);
+}
+
+.attach-name {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-kind {
+  color: var(--muted);
+  font: 10px var(--mono);
+}
+
+.attach-x {
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+}
+
+.attach-x:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+/* realce ao arrastar arquivo sobre o card */
+.card.dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35) inset;
 }
 
 .card-input textarea {

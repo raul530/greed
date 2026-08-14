@@ -26,4 +26,15 @@ export const api = {
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/close`, { method: 'POST' }),
   reopenSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/reopen`, { method: 'POST' }),
+  uploadAttachment: async (sessionId: string, file: File): Promise<{ path: string }> => {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}/attachments?name=${encodeURIComponent(file.name)}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file },
+    )
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    return res.json() as Promise<{ path: string }>
+  },
 }

@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import express from 'express'
@@ -118,6 +119,25 @@ app.post('/api/sessions/:id/close', (req, res) => {
 app.post('/api/sessions/:id/reopen', (req, res) => {
   manager.reopenCard(req.params.id)
   res.json({ ok: true })
+})
+
+// Salva um anexo (bytes crus) dentro da pasta do projeto, em greed-anexos/.
+// Só é usado para arquivos grandes/binários; texto pequeno vai inline pelo cliente.
+app.post('/api/sessions/:id/attachments', express.raw({ type: '*/*', limit: '64mb' }), (req, res) => {
+  try {
+    const projectPath = manager.projectPathForSession(req.params.id)
+    if (!projectPath) throw new Error('Sessão não encontrada')
+    const rawName = String(req.query.name ?? 'arquivo')
+    const safeName = path.basename(rawName).replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'arquivo'
+    const body = req.body as Buffer
+    if (!Buffer.isBuffer(body) || body.length === 0) throw new Error('Arquivo vazio')
+    const dir = path.join(projectPath, 'greed-anexos')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, safeName), body)
+    res.json({ path: path.join('greed-anexos', safeName) })
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
 })
 
 if (process.env.GREED_SERVE_STATIC) {
