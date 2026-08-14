@@ -134,7 +134,9 @@ app.post('/api/sessions/:id/attachments', express.raw({ type: '*/*', limit: '64m
     const dir = path.join(projectPath, 'greed-anexos')
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, safeName), body)
-    res.json({ path: path.join('greed-anexos', safeName) })
+    const rel = path.join('greed-anexos', safeName)
+    manager.ingestAttachment(req.params.id, safeName, rel, body) // extrai + indexa (async)
+    res.json({ path: rel })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
   }

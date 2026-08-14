@@ -12,6 +12,7 @@ import type {
   SessionMeta,
   TranscriptEntry,
 } from '../shared/types'
+import { ingestDoc, renderDocCatalog } from './docs'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
 import { captureTurn, renderMemory } from './memory'
@@ -190,6 +191,23 @@ export class SessionManager {
     return this.projects.get(session.projectId)?.path ?? null
   }
 
+  /** ingesta um anexo salvo na base de conhecimento do projeto (extrai texto + indexa). */
+  ingestAttachment(sessionId: string, name: string, relPath: string, bytes: Buffer): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const project = this.projects.get(session.projectId)
+    if (!project) return
+    ingestDoc({
+      projectId: session.projectId,
+      projectName: session.projectName,
+      projectPath: project.path,
+      sessionId,
+      name,
+      relPath,
+      bytes,
+    })
+  }
+
   setModel(sessionId: string, model: string | null): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
@@ -307,8 +325,10 @@ export class SessionManager {
     const queue = new AsyncQueue<SDKUserMessage>()
     const abort = new AbortController()
     const mcpServers = loadProjectMcpServers(project.path)
-    // memória acumulada do projeto (cluster próprio) reinjetada no system prompt
+    // memória de fatos + catálogo de documentos do projeto, reinjetados no system prompt
     const projectMemory = renderMemory(session.projectId, session.projectName)
+    const docCatalog = renderDocCatalog(session.projectId, session.projectName)
+    const appended = [projectMemory, docCatalog].filter(Boolean).join('\n\n---\n\n')
     const q = query({
       prompt: queue,
       options: {
@@ -319,7 +339,7 @@ export class SessionManager {
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
-          ...(projectMemory ? { append: projectMemory } : {}),
+          ...(appended ? { append: appended } : {}),
         },
         settingSources: ['user', 'project', 'local'],
         ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),

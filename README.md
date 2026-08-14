@@ -62,8 +62,31 @@ Comportamento inteligente:
   contexto da mensagem (o agente já lê direto, sem abrir arquivo).
 - **Grande ou binário** → é salvo em `greed-anexos/` dentro da pasta do projeto e
   a mensagem referencia o caminho; o agente abre com Read/Edit (persiste e é
-  editável). Se a pasta do projeto for um repositório git, considere adicionar
-  `greed-anexos/` ao `.gitignore`.
+  editável).
+
+Todo anexo (inclusive os inline) também alimenta a base de conhecimento do
+projeto (abaixo). Se a pasta do projeto for um repositório git, considere
+adicionar `greed-anexos/` ao `.gitignore`.
+
+## Base de conhecimento de documentos
+
+Todo arquivo anexado vira memória de documento durável do projeto:
+
+- **Extração de texto nativa** (sem dependências, sem custo de tokens): PDF via
+  PDFKit (`osascript`), DOCX/RTF/ODT via `textutil`, XLSX/PPTX via `python3`
+  stdlib, texto/markdown/csv direto. O texto extraído fica em
+  `greed-anexos/_texto/`.
+- **Descrição de 1 linha** por doc (uma passada curta de Haiku na ingestão).
+- **Catálogo injetado** no system prompt de **toda sessão** do projeto: o agente
+  sempre sabe *quais* documentos existem, *do que* são e *onde* estão — inclusive
+  num chat **novo, meses depois** — e abre o original/texto sob demanda (Read) ou
+  busca no acervo (Grep em `./greed-anexos/_texto`).
+- Índice completo greppável em `greed-anexos/INDEX.md`; metadados em
+  `data/docs/<projectId>.json`. Dedup por hash (reanexar = 0 trabalho). Custo por
+  sessão: **0 chamadas** além do catálogo (texto já injetado).
+
+PDF escaneado (sem camada de texto) é catalogado e lido pelo agente via visão
+nativa do Read; OCR dedicado fica pra depois.
 
 ## Memória por projeto (clusters)
 

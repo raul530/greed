@@ -56,6 +56,8 @@ export function SessionCard(props: Props) {
         try {
           const content = await file.text()
           setAttachments((prev) => [...prev, { id, name: file.name, state: 'inline', content }])
+          // além do inline no contexto, persiste + indexa na base de conhecimento do projeto
+          void api.uploadAttachment(session.id, file).catch(() => {})
         } catch {
           setAttachments((prev) => [
             ...prev,
