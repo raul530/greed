@@ -7,7 +7,10 @@ import { now, uid } from './util'
 
 function normalizePath(input: string): string {
   let p = input.trim()
-  if (p.startsWith('~')) p = path.join(os.homedir(), p.slice(1))
+  if (p === '~' || p.startsWith('~/')) p = path.join(os.homedir(), p.slice(1))
+  if (!path.isAbsolute(p)) {
+    throw new Error('Use um caminho absoluto (ex.: /Users/você/repos/projeto ou ~/repos/projeto)')
+  }
   return path.resolve(p)
 }
 

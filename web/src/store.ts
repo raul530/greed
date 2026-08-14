@@ -11,7 +11,8 @@ export interface ClientState {
   projects: Project[]
   sessions: Record<string, SessionMeta>
   transcripts: Record<string, TranscriptEntry[]>
-  permissions: Record<string, PermissionRequest>
+  /** pedidos de permissão em aberto por sessão (um turno pode ter vários) */
+  permissions: Record<string, PermissionRequest[]>
 }
 
 export const initialState: ClientState = {
@@ -40,8 +41,8 @@ export function reducer(state: ClientState, action: Action): ClientState {
     case 'snapshot': {
       const sessions: Record<string, SessionMeta> = {}
       for (const s of msg.sessions) sessions[s.id] = s
-      const permissions: Record<string, PermissionRequest> = {}
-      for (const p of msg.permissions) permissions[p.sessionId] = p
+      const permissions: Record<string, PermissionRequest[]> = {}
+      for (const p of msg.permissions) (permissions[p.sessionId] ??= []).push(p)
       return {
         ...state,
         projects: msg.projects,
@@ -80,16 +81,21 @@ export function reducer(state: ClientState, action: Action): ClientState {
       }
       return { ...state, transcripts: { ...state.transcripts, [msg.sessionId]: next } }
     }
-    case 'permission_request':
+    case 'permission_request': {
+      const list = state.permissions[msg.request.sessionId] ?? []
+      if (list.some((p) => p.id === msg.request.id)) return state
       return {
         ...state,
-        permissions: { ...state.permissions, [msg.request.sessionId]: msg.request },
+        permissions: { ...state.permissions, [msg.request.sessionId]: [...list, msg.request] },
       }
+    }
     case 'permission_resolved': {
-      const cur = state.permissions[msg.sessionId]
-      if (!cur || cur.id !== msg.requestId) return state
+      const list = state.permissions[msg.sessionId]
+      if (!list) return state
+      const next = list.filter((p) => p.id !== msg.requestId)
       const permissions = { ...state.permissions }
-      delete permissions[msg.sessionId]
+      if (next.length > 0) permissions[msg.sessionId] = next
+      else delete permissions[msg.sessionId]
       return { ...state, permissions }
     }
     case 'notify':

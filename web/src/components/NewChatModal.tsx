@@ -17,12 +17,15 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
 
   useEffect(() => taRef.current?.focus(), [])
 
+  // resolve na hora: cobre projetos que chegam depois do mount ou id que sumiu
+  const effectiveId = projects.some((p) => p.id === projectId) ? projectId : (projects[0]?.id ?? '')
+
   const submit = async () => {
-    if (!projectId || !prompt.trim() || busy) return
+    if (!effectiveId || !prompt.trim() || busy) return
     setBusy(true)
     setError(null)
     try {
-      await api.newSession(projectId, prompt)
+      await api.newSession(effectiveId, prompt)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -45,7 +48,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
           <>
             <label>
               Projeto
-              <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <select value={effectiveId} onChange={(e) => setProjectId(e.target.value)}>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {p.path}
@@ -74,7 +77,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
               <button onClick={onClose}>Cancelar</button>
               <button
                 className="primary"
-                disabled={!projectId || !prompt.trim() || busy}
+                disabled={!effectiveId || !prompt.trim() || busy}
                 onClick={() => void submit()}
               >
                 {busy ? 'Abrindo…' : 'Iniciar (⌘⏎)'}

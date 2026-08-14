@@ -52,18 +52,28 @@ class AsyncQueue<T> implements AsyncIterable<T> {
   }
 }
 
+interface PendingPerm {
+  request: PermissionRequest
+  resolve: (r: PermissionResult) => void
+}
+
 interface LiveSession {
   queue: AsyncQueue<SDKUserMessage>
   q: Query
   abort: AbortController
-  pending: { request: PermissionRequest; resolve: (r: PermissionResult) => void } | null
+  /** pedidos de permissão em aberto, chaveados por request.id (um turno pode ter vários) */
+  pending: Map<string, PendingPerm>
   currentAssistantId: string | null
+  /** incrementa a cada mensagem do usuário; usado para timers não confundirem turnos */
+  turnSeq: number
 }
 
 export class SessionManager {
   private sessions = new Map<string, SessionMeta>()
   private transcripts = new Map<string, TranscriptEntry[]>()
   private live = new Map<string, LiveSession>()
+  /** sessões cujo query() foi encerrado mas ainda está drenando (janela de graça antes do abort) */
+  private ending = new Map<string, { live: LiveSession; timer: NodeJS.Timeout }>()
 
   constructor(
     private hub: Hub,
@@ -84,7 +94,7 @@ export class SessionManager {
     }
     const permissions: PermissionRequest[] = []
     for (const live of this.live.values()) {
-      if (live.pending) permissions.push(live.pending.request)
+      for (const p of live.pending.values()) permissions.push(p.request)
     }
     return { type: 'snapshot', projects: this.projects.list(), sessions, transcripts, permissions }
   }
@@ -125,29 +135,35 @@ export class SessionManager {
     this.addEntry(sessionId, { kind: 'user', id: uid(), text: clean, ts: now() })
     const live = this.live.get(sessionId) ?? this.startLive(session)
     if (!live) return
+    live.turnSeq += 1
     live.queue.push({
       type: 'user',
       message: { role: 'user', content: clean },
       parent_tool_use_id: null,
     })
-    this.touch(session, { status: 'working', attention: null, lastError: null })
+    // não rebaixa de 'waiting' se ainda há permissão pendente
+    const status = live.pending.size > 0 ? session.status : 'working'
+    this.touch(session, { status, attention: null, lastError: null })
   }
 
   respondPermission(sessionId: string, requestId: string, behavior: 'allow' | 'deny'): void {
     const live = this.live.get(sessionId)
-    if (!live?.pending || live.pending.request.id !== requestId) return
-    const input = live.pending.request.input
+    const entry = live?.pending.get(requestId)
+    if (!entry) return
     if (behavior === 'allow') {
-      live.pending.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> })
+      entry.resolve({
+        behavior: 'allow',
+        updatedInput: entry.request.input as Record<string, unknown>,
+      })
     } else {
-      live.pending.resolve({ behavior: 'deny', message: 'O usuário negou a permissão no Bento.' })
+      entry.resolve({ behavior: 'deny', message: 'O usuário negou a permissão no Bento.' })
     }
   }
 
   interrupt(sessionId: string): void {
     const live = this.live.get(sessionId)
     if (!live) return
-    live.pending?.resolve({ behavior: 'deny', message: 'Interrompido pelo usuário.' })
+    this.rejectAllPending(live, 'Interrompido pelo usuário.')
     void live.q.interrupt().catch(() => {})
   }
 
@@ -162,7 +178,7 @@ export class SessionManager {
     this.touch(session, { open: false, attention: null })
     const live = this.live.get(sessionId)
     // trabalhando ou aguardando permissão: continua em background; encerra no fim do turno
-    if (live && session.status === 'idle' && !live.pending) this.endLive(sessionId)
+    if (live && session.status === 'idle' && live.pending.size === 0) this.endLive(sessionId)
   }
 
   reopenCard(sessionId: string): void {
@@ -171,18 +187,25 @@ export class SessionManager {
     this.touch(session, { open: true })
     this.hub.broadcast({ type: 'transcript', sessionId, entries: this.transcript(sessionId) })
     const live = this.live.get(sessionId)
-    if (live?.pending) {
-      this.hub.broadcast({ type: 'permission_request', request: live.pending.request })
+    if (live) {
+      for (const p of live.pending.values()) {
+        this.hub.broadcast({ type: 'permission_request', request: p.request })
+      }
     }
   }
 
   shutdown(): void {
     for (const [sessionId, live] of this.live) {
-      this.rejectPending(live, 'Servidor encerrando.')
+      this.rejectAllPending(live, 'Servidor encerrando.')
       live.queue.end()
       live.abort.abort()
       this.live.delete(sessionId)
     }
+    for (const [, e] of this.ending) {
+      clearTimeout(e.timer)
+      e.live.abort.abort()
+    }
+    this.ending.clear()
   }
 
   // ── internos ────────────────────────────────────────────────────────────
@@ -233,6 +256,14 @@ export class SessionManager {
       })
       return null
     }
+    // se a sessão anterior ainda está drenando, aborta agora para não haver dois
+    // processos com o mesmo session_id competindo pelo arquivo de sessão
+    const ending = this.ending.get(session.id)
+    if (ending) {
+      clearTimeout(ending.timer)
+      this.ending.delete(session.id)
+      ending.live.abort.abort()
+    }
     const queue = new AsyncQueue<SDKUserMessage>()
     const abort = new AbortController()
     const mcpServers = loadProjectMcpServers(project.path)
@@ -260,7 +291,14 @@ export class SessionManager {
         },
       },
     })
-    const live: LiveSession = { queue, q, abort, pending: null, currentAssistantId: null }
+    const live: LiveSession = {
+      queue,
+      q,
+      abort,
+      pending: new Map(),
+      currentAssistantId: null,
+      turnSeq: 0,
+    }
     this.live.set(session.id, live)
     void this.runLoop(session.id, live)
     return live
@@ -273,19 +311,32 @@ export class SessionManager {
       }
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err)
-      this.addEntry(sessionId, {
-        kind: 'error',
-        id: uid(),
-        text: `A sessão encerrou com erro: ${text}`,
-        ts: now(),
-      })
-      const session = this.sessions.get(sessionId)
-      if (session) this.touch(session, { lastError: text })
+      // só reporta erro se este ainda é o live corrente (não um que foi substituído)
+      if (this.live.get(sessionId) === live) {
+        this.addEntry(sessionId, {
+          kind: 'error',
+          id: uid(),
+          text: `A sessão encerrou com erro: ${text}`,
+          ts: now(),
+        })
+        const session = this.sessions.get(sessionId)
+        if (session) this.touch(session, { lastError: text })
+      }
     } finally {
-      this.rejectPending(live, 'Sessão encerrada.')
-      if (this.live.get(sessionId) === live) this.live.delete(sessionId)
-      const session = this.sessions.get(sessionId)
-      if (session && session.status !== 'idle') this.touch(session, { status: 'idle' })
+      const isCurrent = this.live.get(sessionId) === live
+      this.rejectAllPending(live, 'Sessão encerrada.')
+      // limpa registro em qualquer um dos dois mapas onde este live estiver
+      const ending = this.ending.get(sessionId)
+      if (ending && ending.live === live) {
+        clearTimeout(ending.timer)
+        this.ending.delete(sessionId)
+        this.evictTranscriptIfClosed(sessionId)
+      }
+      if (isCurrent) {
+        this.live.delete(sessionId)
+        const session = this.sessions.get(sessionId)
+        if (session && session.status !== 'idle') this.touch(session, { status: 'idle' })
+      }
     }
   }
 
@@ -441,37 +492,35 @@ export class SessionManager {
       ts: now(),
     })
     return new Promise<PermissionResult>((resolve) => {
-      live.pending = {
-        request,
-        resolve: (result) => {
-          live.pending = null
-          const decision = result.behavior === 'allow' ? 'allow' : 'deny'
-          this.replaceEntry(sessionId, {
-            kind: 'permission',
-            id: entryId,
-            toolName,
-            summary: request.summary,
-            decision,
-            ts: now(),
-          })
-          this.hub.broadcast({
-            type: 'permission_resolved',
-            sessionId,
-            requestId: request.id,
-            decision,
-          })
-          const s = this.sessions.get(sessionId)
-          if (s && s.status === 'waiting') this.touch(s, { status: 'working', attention: null })
-          resolve(result)
-        },
+      const settle = (result: PermissionResult) => {
+        if (!live.pending.has(request.id)) return
+        live.pending.delete(request.id)
+        const decision = result.behavior === 'allow' ? 'allow' : 'deny'
+        this.replaceEntry(sessionId, {
+          kind: 'permission',
+          id: entryId,
+          toolName,
+          summary: request.summary,
+          decision,
+          ts: now(),
+        })
+        this.hub.broadcast({
+          type: 'permission_resolved',
+          sessionId,
+          requestId: request.id,
+          decision,
+        })
+        const s = this.sessions.get(sessionId)
+        // volta a 'working' só quando não há mais nada pendente
+        if (s && s.status === 'waiting' && live.pending.size === 0) {
+          this.touch(s, { status: 'working', attention: null })
+        }
+        resolve(result)
       }
+      live.pending.set(request.id, { request, resolve: settle })
       opts.signal.addEventListener(
         'abort',
-        () => {
-          if (live.pending?.request.id === request.id) {
-            live.pending.resolve({ behavior: 'deny', message: 'Pedido cancelado pela sessão.' })
-          }
-        },
+        () => settle({ behavior: 'deny', message: 'Pedido cancelado pela sessão.' }),
         { once: true },
       )
       this.touch(session, { status: 'waiting', attention: 'waiting' })
@@ -488,10 +537,14 @@ export class SessionManager {
 
   /** Stop hook: rede de segurança caso o result não chegue pelo stream. */
   private onTurnStopped(sessionId: string): void {
+    const live = this.live.get(sessionId)
+    if (!live) return
+    const seq = live.turnSeq
     const timer = setTimeout(() => {
       const session = this.sessions.get(sessionId)
-      const live = this.live.get(sessionId)
-      if (session && session.status === 'working' && !live?.pending) {
+      const cur = this.live.get(sessionId)
+      // só aplica se for o mesmo live e o mesmo turno que disparou o Stop
+      if (cur === live && cur.turnSeq === seq && session?.status === 'working' && cur.pending.size === 0) {
         this.touch(session, { status: 'idle', attention: 'finished' })
       }
     }, 1500)
@@ -499,25 +552,39 @@ export class SessionManager {
   }
 
   private onSessionEnded(sessionId: string): void {
-    const session = this.sessions.get(sessionId)
-    if (session && session.status === 'waiting') {
-      const live = this.live.get(sessionId)
-      if (live) this.rejectPending(live, 'Sessão encerrada.')
-    }
+    const live = this.live.get(sessionId)
+    if (live && live.pending.size > 0) this.rejectAllPending(live, 'Sessão encerrada.')
   }
 
-  private rejectPending(live: LiveSession, reason: string): void {
-    live.pending?.resolve({ behavior: 'deny', message: reason })
+  private rejectAllPending(live: LiveSession, reason: string): void {
+    // snapshot: settle() muta o Map durante a iteração
+    for (const entry of [...live.pending.values()]) {
+      entry.resolve({ behavior: 'deny', message: reason })
+    }
   }
 
   private endLive(sessionId: string): void {
     const live = this.live.get(sessionId)
     if (!live) return
     this.live.delete(sessionId)
-    this.rejectPending(live, 'Sessão fechada.')
+    this.rejectAllPending(live, 'Sessão fechada.')
     live.queue.end()
     // se o processo não encerrar sozinho depois do fim do input, aborta
-    const timer = setTimeout(() => live.abort.abort(), 5000)
+    const timer = setTimeout(() => {
+      this.ending.delete(sessionId)
+      live.abort.abort()
+      this.evictTranscriptIfClosed(sessionId)
+    }, 5000)
     timer.unref()
+    this.ending.set(sessionId, { live, timer })
+  }
+
+  /** libera o transcript da memória quando a sessão não está aberta na UI. */
+  private evictTranscriptIfClosed(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (session && !session.open && !this.live.has(sessionId)) {
+      store.flush()
+      this.transcripts.delete(sessionId)
+    }
   }
 }

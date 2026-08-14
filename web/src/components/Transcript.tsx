@@ -53,12 +53,12 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
 
 interface Props {
   entries: TranscriptEntry[]
-  permission: PermissionRequest | null
+  permissions: PermissionRequest[]
   working: boolean
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
 }
 
-export function Transcript({ entries, permission, working, onPermission }: Props) {
+export function Transcript({ entries, permissions, working, onPermission }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   const stick = useRef(true)
 
@@ -78,15 +78,15 @@ export function Transcript({ entries, permission, working, onPermission }: Props
       {entries.map((e) => (
         <Entry key={e.id} entry={e} />
       ))}
-      {working && !permission && (
+      {working && permissions.length === 0 && (
         <div className="thinking" aria-label="trabalhando">
           <span />
           <span />
           <span />
         </div>
       )}
-      {permission && (
-        <div className="perm-panel">
+      {permissions.map((permission) => (
+        <div className="perm-panel" key={permission.id}>
           <div className="perm-head">
             🔐 Pedido de permissão: <b>{permission.toolName}</b>
           </div>
@@ -100,7 +100,7 @@ export function Transcript({ entries, permission, working, onPermission }: Props
             </button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }

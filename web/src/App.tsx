@@ -46,7 +46,11 @@ export function App() {
     }
   }, [])
 
-  const send = useCallback((m: ClientMsg) => wsRef.current?.send(m), [])
+  const send = useCallback((m: ClientMsg): boolean => wsRef.current?.send(m) ?? false, [])
+
+  const call = useCallback((p: Promise<unknown>) => {
+    p.catch((err) => console.error('[bento] ação falhou:', err))
+  }, [])
 
   const openSessions = useMemo(
     () =>
@@ -62,6 +66,9 @@ export function App() {
         .sort((a, b) => b.updatedAt - a.updatedAt),
     [state.sessions],
   )
+
+  // ignora id de expansão obsoleto (sessão fechada por outra aba, etc.)
+  const expanded = expandedId && state.sessions[expandedId]?.open ? expandedId : null
 
   const focusCard = useCallback(
     (id: string) => {
@@ -150,14 +157,15 @@ export function App() {
               key={s.id}
               session={s}
               entries={state.transcripts[s.id] ?? []}
-              permission={state.permissions[s.id] ?? null}
+              permissions={state.permissions[s.id] ?? []}
               index={i}
-              expanded={expandedId === s.id}
+              expanded={expanded === s.id}
+              connected={state.connected}
               onSend={(text) => send({ type: 'user_message', sessionId: s.id, text })}
               onInterrupt={() => send({ type: 'interrupt', sessionId: s.id })}
               onClose={() => {
                 if (expandedId === s.id) setExpandedId(null)
-                void api.closeSession(s.id)
+                call(api.closeSession(s.id))
               }}
               onToggleExpand={() => setExpandedId(expandedId === s.id ? null : s.id)}
               onSeen={() => send({ type: 'mark_read', sessionId: s.id })}
@@ -173,7 +181,7 @@ export function App() {
         </main>
       )}
 
-      {expandedId && <div className="expand-backdrop" onMouseDown={() => setExpandedId(null)} />}
+      {expanded && <div className="expand-backdrop" onMouseDown={() => setExpandedId(null)} />}
 
       {modal === 'new' && (
         <NewChatModal
@@ -190,7 +198,7 @@ export function App() {
           sessions={closedSessions}
           onClose={() => setHistoryOpen(false)}
           onReopen={(id) => {
-            void api.reopenSession(id)
+            call(api.reopenSession(id))
             setHistoryOpen(false)
           }}
         />

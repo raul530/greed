@@ -5,10 +5,12 @@ import { Transcript } from './Transcript'
 interface Props {
   session: SessionMeta
   entries: TranscriptEntry[]
-  permission: PermissionRequest | null
+  permissions: PermissionRequest[]
   index: number
   expanded: boolean
-  onSend: (text: string) => void
+  connected: boolean
+  /** retorna true se a mensagem foi enviada (para o input só limpar no sucesso) */
+  onSend: (text: string) => boolean
   onInterrupt: () => void
   onClose: () => void
   onToggleExpand: () => void
@@ -23,15 +25,14 @@ function StatusDot({ status }: { status: SessionMeta['status'] }) {
 }
 
 export function SessionCard(props: Props) {
-  const { session, entries, permission, index, expanded } = props
+  const { session, entries, permissions, index, expanded, connected } = props
   const [draft, setDraft] = useState('')
   const rootRef = useRef<HTMLElement | null>(null)
 
   const submit = () => {
     const text = draft.trim()
-    if (!text) return
-    props.onSend(text)
-    setDraft('')
+    if (!text || !connected) return
+    if (props.onSend(text)) setDraft('')
   }
 
   const seen = () => {
@@ -94,7 +95,7 @@ export function SessionCard(props: Props) {
       </header>
       <Transcript
         entries={entries}
-        permission={permission}
+        permissions={permissions}
         working={session.status === 'working'}
         onPermission={props.onPermission}
       />
@@ -104,19 +105,27 @@ export function SessionCard(props: Props) {
           value={draft}
           rows={1}
           placeholder={
-            session.status === 'waiting'
-              ? 'Responda o pedido de permissão acima…'
-              : 'Mensagem… (Enter envia, Shift+Enter quebra linha)'
+            !connected
+              ? 'Reconectando ao servidor…'
+              : session.status === 'waiting'
+                ? 'Responda o pedido de permissão acima…'
+                : 'Mensagem… (Enter envia, Shift+Enter quebra linha)'
           }
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            // não envia no meio de composição IME (acentos, CJK)
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
             }
           }}
         />
-        <button className="send" onClick={submit} disabled={!draft.trim()} title="Enviar">
+        <button
+          className="send"
+          onClick={submit}
+          disabled={!draft.trim() || !connected}
+          title="Enviar"
+        >
           ➤
         </button>
       </footer>

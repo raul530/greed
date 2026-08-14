@@ -47,7 +47,11 @@ export function ProjectsModal({ projects, onClose }: Props) {
                 <button
                   className="icon"
                   title="Remover projeto (não apaga a pasta)"
-                  onClick={() => void api.removeProject(p.id)}
+                  onClick={() =>
+                    api
+                      .removeProject(p.id)
+                      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                  }
                 >
                   ✕
                 </button>

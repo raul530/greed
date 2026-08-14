@@ -1,7 +1,8 @@
 import type { ClientMsg, ServerMsg } from '../../shared/types'
 
 export interface WSHandle {
-  send(m: ClientMsg): void
+  /** retorna false se a mensagem não pôde ser enviada (socket fechado/reconectando) */
+  send(m: ClientMsg): boolean
   close(): void
 }
 
@@ -35,7 +36,11 @@ export function connectWS(
 
   return {
     send(m) {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m))
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(m))
+        return true
+      }
+      return false
     },
     close() {
       closed = true

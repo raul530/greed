@@ -1,6 +1,26 @@
 import type { WebSocket, WebSocketServer } from 'ws'
 import type { ClientMsg, ServerMsg } from '../shared/types'
 
+function isValidClientMsg(m: unknown): m is ClientMsg {
+  if (!m || typeof m !== 'object') return false
+  const msg = m as Record<string, unknown>
+  switch (msg.type) {
+    case 'user_message':
+      return typeof msg.sessionId === 'string' && typeof msg.text === 'string'
+    case 'permission_response':
+      return (
+        typeof msg.sessionId === 'string' &&
+        typeof msg.requestId === 'string' &&
+        (msg.behavior === 'allow' || msg.behavior === 'deny')
+      )
+    case 'interrupt':
+    case 'mark_read':
+      return typeof msg.sessionId === 'string'
+    default:
+      return false
+  }
+}
+
 export class Hub {
   private clients = new Set<WebSocket>()
   private messageHandler: ((msg: ClientMsg) => void) | null = null
@@ -12,13 +32,19 @@ export class Hub {
       ws.on('close', () => this.clients.delete(ws))
       ws.on('error', () => this.clients.delete(ws))
       ws.on('message', (data) => {
-        let msg: ClientMsg
+        let parsed: unknown
         try {
-          msg = JSON.parse(String(data)) as ClientMsg
+          parsed = JSON.parse(String(data))
         } catch {
-          return
+          return // JSON malformado — ignora
         }
-        this.messageHandler?.(msg)
+        if (!isValidClientMsg(parsed)) return // mensagem fora do protocolo — ignora
+        try {
+          this.messageHandler?.(parsed)
+        } catch (err) {
+          // um handler que lança não pode derrubar o servidor
+          console.error('[bento] erro ao tratar mensagem do cliente:', err)
+        }
       })
       this.connectHandler?.(ws)
     })

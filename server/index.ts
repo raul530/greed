@@ -9,12 +9,43 @@ import { store } from './store'
 
 const PORT = Number(process.env.BENTO_PORT ?? 4517)
 
+/** Só aceita hosts locais — bloqueia DNS rebinding e acesso de outras máquinas. */
+function isLocalHostname(host: string | undefined): boolean {
+  if (!host) return true // clientes sem Host (ex.: ferramentas locais) são ok
+  const name = host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase()
+  return name === 'localhost' || name === '127.0.0.1' || name === '::1'
+}
+
+/** Origin de página web só pode ser local — bloqueia hijacking cross-site do WebSocket. */
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true // conexões sem Origin não vêm de uma página no navegador
+  try {
+    return isLocalHostname(new URL(origin).hostname)
+  } catch {
+    return false
+  }
+}
+
 const app = express()
 app.use(express.json({ limit: '2mb' }))
+app.use((req, res, next) => {
+  if (!isLocalHostname(req.headers.host)) {
+    res.status(403).json({ error: 'Host não permitido' })
+    return
+  }
+  next()
+})
 
 const projects = new ProjectRegistry()
 const server = http.createServer(app)
-const wss = new WebSocketServer({ server, path: '/ws' })
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    if (isAllowedOrigin(info.origin)) cb(true)
+    else cb(false, 403, 'Origin não permitida')
+  },
+})
 const hub = new Hub(wss)
 const manager = new SessionManager(hub, projects)
 
@@ -88,10 +119,21 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`[bento] server rodando em http://localhost:${PORT}`)
 })
 
-function shutdown(): void {
+let closing = false
+function shutdown(code = 0): void {
+  if (closing) return
+  closing = true
   manager.shutdown()
   store.flush()
-  process.exit(0)
+  process.exit(code)
 }
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
+process.on('SIGINT', () => shutdown(0))
+process.on('SIGTERM', () => shutdown(0))
+process.on('exit', () => store.flush())
+process.on('uncaughtException', (err) => {
+  console.error('[bento] uncaughtException:', err)
+  shutdown(1)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('[bento] unhandledRejection:', err)
+})
