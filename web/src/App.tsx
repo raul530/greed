@@ -13,7 +13,7 @@ function showNotification(msg: Extract<ServerMsg, { type: 'notify' }>) {
   try {
     new Notification(msg.kind === 'waiting' ? `⚠️ ${msg.title}` : `✅ ${msg.title}`, {
       body: msg.body,
-      tag: `bento-${msg.sessionId}`,
+      tag: `greed-${msg.sessionId}`,
     })
   } catch {
     // Notification pode lançar em contextos sem suporte — ignora
@@ -49,7 +49,7 @@ export function App() {
   const send = useCallback((m: ClientMsg): boolean => wsRef.current?.send(m) ?? false, [])
 
   const call = useCallback((p: Promise<unknown>) => {
-    p.catch((err) => console.error('[bento] ação falhou:', err))
+    p.catch((err) => console.error('[greed] ação falhou:', err))
   }, [])
 
   const openSessions = useMemo(
@@ -117,8 +117,8 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-logo">🍱</span>
-          <b>Bento</b>
+          <span className="brand-logo">💰</span>
+          <b>Greed</b>
           <span className={state.connected ? 'conn ok' : 'conn off'}>
             {state.connected ? 'conectado' : 'reconectando…'}
           </span>
@@ -141,7 +141,7 @@ export function App() {
 
       {openSessions.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-logo">🍱</div>
+          <div className="empty-logo">💰</div>
           <p>Nenhum chat aberto.</p>
           <button className="primary" onClick={() => setModal('new')}>
             + Novo chat

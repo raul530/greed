@@ -1,8 +1,8 @@
 {
-  "name": "bento",
+  "name": "greed",
   "version": "0.1.0",
   "private": true,
-  "description": "Orquestrador local de chats Claude — grid bento de sessões do Claude Agent SDK",
+  "description": "Orquestrador local de chats Claude — grid de sessões do Claude Agent SDK com memória por projeto",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -12,7 +12,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "build": "vite build --config web/vite.config.ts",
-    "start": "BENTO_SERVE_STATIC=1 tsx server/index.ts",
+    "start": "GREED_SERVE_STATIC=1 tsx server/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

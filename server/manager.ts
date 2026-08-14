@@ -13,6 +13,7 @@ import type {
 } from '../shared/types'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
+import { captureTurn, renderMemory } from './memory'
 import type { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fallbackTitle, generateTitle } from './titles'
@@ -156,7 +157,7 @@ export class SessionManager {
         updatedInput: entry.request.input as Record<string, unknown>,
       })
     } else {
-      entry.resolve({ behavior: 'deny', message: 'O usuário negou a permissão no Bento.' })
+      entry.resolve({ behavior: 'deny', message: 'O usuário negou a permissão no Greed.' })
     }
   }
 
@@ -267,12 +268,18 @@ export class SessionManager {
     const queue = new AsyncQueue<SDKUserMessage>()
     const abort = new AbortController()
     const mcpServers = loadProjectMcpServers(project.path)
+    // memória acumulada do projeto (cluster próprio) reinjetada no system prompt
+    const projectMemory = renderMemory(session.projectId, session.projectName)
     const q = query({
       prompt: queue,
       options: {
         cwd: project.path,
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        systemPrompt: {
+          type: 'preset',
+          preset: 'claude_code',
+          ...(projectMemory ? { append: projectMemory } : {}),
+        },
         settingSources: ['user', 'project', 'local'],
         ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
         permissionMode: 'default',
@@ -281,7 +288,7 @@ export class SessionManager {
         // garante auth pela assinatura (login do Claude Code), nunca por API key
         env: { ...process.env, ANTHROPIC_API_KEY: undefined },
         stderr: (data: string) => {
-          if (process.env.BENTO_DEBUG) console.error(`[sdk ${session.id.slice(0, 8)}]`, data)
+          if (process.env.GREED_DEBUG) console.error(`[sdk ${session.id.slice(0, 8)}]`, data)
         },
         canUseTool: (toolName, input, opts) =>
           this.handlePermission(session.id, toolName, input, opts),
@@ -444,6 +451,7 @@ export class SessionManager {
           this.touch(session, { status: 'idle', attention: 'finished', lastError: detail })
         } else {
           this.touch(session, { status: 'idle', attention: 'finished', lastError: null })
+          this.captureMemory(session)
         }
         const t = this.transcript(sessionId)
         const lastAssistant = [...t].reverse().find((e) => e.kind === 'assistant')
@@ -472,7 +480,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId)
     const live = this.live.get(sessionId)
     if (!session || !live) {
-      return Promise.resolve({ behavior: 'deny', message: 'Sessão não está ativa no Bento.' })
+      return Promise.resolve({ behavior: 'deny', message: 'Sessão não está ativa no Greed.' })
     }
     const request: PermissionRequest = {
       id: uid(),
@@ -577,6 +585,34 @@ export class SessionManager {
     }, 5000)
     timer.unref()
     this.ending.set(sessionId, { live, timer })
+  }
+
+  /** Ao fim de um turno bem-sucedido, extrai memórias duráveis para o cluster do projeto. */
+  private captureMemory(session: SessionMeta): void {
+    const t = this.transcript(session.id)
+    let ui = -1
+    for (let i = t.length - 1; i >= 0; i--) {
+      if (t[i].kind === 'user') {
+        ui = i
+        break
+      }
+    }
+    if (ui < 0) return
+    const userEntry = t[ui]
+    if (userEntry.kind !== 'user') return
+    let assistantText = ''
+    for (let i = ui + 1; i < t.length; i++) {
+      const e = t[i]
+      if (e.kind === 'assistant') assistantText += (assistantText ? '\n' : '') + e.text
+    }
+    if (!assistantText.trim()) return
+    captureTurn({
+      projectId: session.projectId,
+      projectName: session.projectName,
+      sessionId: session.id,
+      userText: userEntry.text,
+      assistantText,
+    })
   }
 
   /** libera o transcript da memória quando a sessão não está aberta na UI. */

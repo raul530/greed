@@ -7,7 +7,7 @@ import { SessionManager } from './manager'
 import { ProjectRegistry } from './projects'
 import { store } from './store'
 
-const PORT = Number(process.env.BENTO_PORT ?? 4517)
+const PORT = Number(process.env.GREED_PORT ?? 4517)
 
 /** Só aceita hosts locais — bloqueia DNS rebinding e acesso de outras máquinas. */
 function isLocalHostname(host: string | undefined): boolean {
@@ -109,14 +109,14 @@ app.post('/api/sessions/:id/reopen', (req, res) => {
   res.json({ ok: true })
 })
 
-if (process.env.BENTO_SERVE_STATIC) {
+if (process.env.GREED_SERVE_STATIC) {
   const dist = path.resolve('web/dist')
   app.use(express.static(dist))
   app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')))
 }
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[bento] server rodando em http://localhost:${PORT}`)
+  console.log(`[greed] server rodando em http://localhost:${PORT}`)
 })
 
 let closing = false
@@ -131,9 +131,9 @@ process.on('SIGINT', () => shutdown(0))
 process.on('SIGTERM', () => shutdown(0))
 process.on('exit', () => store.flush())
 process.on('uncaughtException', (err) => {
-  console.error('[bento] uncaughtException:', err)
+  console.error('[greed] uncaughtException:', err)
   shutdown(1)
 })
 process.on('unhandledRejection', (err) => {
-  console.error('[bento] unhandledRejection:', err)
+  console.error('[greed] unhandledRejection:', err)
 })

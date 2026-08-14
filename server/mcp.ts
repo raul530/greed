@@ -21,7 +21,7 @@ export function loadProjectMcpServers(projectPath: string): Record<string, McpSe
     if (!parsed.mcpServers || typeof parsed.mcpServers !== 'object') return {}
     return expandEnvVarsDeep(parsed.mcpServers)
   } catch (err) {
-    console.warn(`[bento] .mcp.json inválido em ${file}:`, err)
+    console.warn(`[greed] .mcp.json inválido em ${file}:`, err)
     return {}
   }
 }

@@ -43,7 +43,7 @@ export class Hub {
           this.messageHandler?.(parsed)
         } catch (err) {
           // um handler que lança não pode derrubar o servidor
-          console.error('[bento] erro ao tratar mensagem do cliente:', err)
+          console.error('[greed] erro ao tratar mensagem do cliente:', err)
         }
       })
       this.connectHandler?.(ws)
