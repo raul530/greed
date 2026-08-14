@@ -16,6 +16,8 @@ export interface SessionMeta {
   projectName: string
   title: string
   sdkSessionId: string | null
+  /** alias do modelo (ex.: 'opus', 'sonnet', 'haiku'); null = padrão da assinatura */
+  model: string | null
   open: boolean
   status: CardStatus
   attention: Attention
@@ -58,6 +60,7 @@ export type ClientMsg =
     }
   | { type: 'interrupt'; sessionId: string }
   | { type: 'mark_read'; sessionId: string }
+  | { type: 'set_model'; sessionId: string; model: string | null }
 
 export type ServerMsg =
   | {

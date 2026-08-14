@@ -83,6 +83,7 @@ export class SessionManager {
     for (const s of store.loadSessions()) {
       // o servidor acabou de subir: nada está rodando
       s.status = 'idle'
+      s.model = s.model ?? null // compat com sessões salvas antes do seletor de modelo
       this.sessions.set(s.id, s)
     }
   }
@@ -100,7 +101,7 @@ export class SessionManager {
     return { type: 'snapshot', projects: this.projects.list(), sessions, transcripts, permissions }
   }
 
-  createSession(projectId: string, prompt: string): SessionMeta {
+  createSession(projectId: string, prompt: string, model?: string | null): SessionMeta {
     const project = this.projects.get(projectId)
     if (!project) throw new Error('Projeto não encontrado')
     const session: SessionMeta = {
@@ -109,6 +110,7 @@ export class SessionManager {
       projectName: project.name,
       title: fallbackTitle(prompt),
       sdkSessionId: null,
+      model: model && model.trim() ? model.trim() : null,
       open: true,
       status: 'idle',
       attention: null,
@@ -171,6 +173,17 @@ export class SessionManager {
   markRead(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session && session.attention) this.touch(session, { attention: null })
+  }
+
+  setModel(sessionId: string, model: string | null): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const next = model && model.trim() ? model.trim() : null
+    if (session.model === next) return
+    this.touch(session, { model: next })
+    // se há uma sessão viva, aplica já (vale a partir do próximo turno)
+    const live = this.live.get(sessionId)
+    if (live) void live.q.setModel(next ?? undefined).catch(() => {})
   }
 
   closeCard(sessionId: string): void {
@@ -275,6 +288,7 @@ export class SessionManager {
       options: {
         cwd: project.path,
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
+        ...(session.model ? { model: session.model } : {}),
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',

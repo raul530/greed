@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
+import { MODELS } from '../models'
 import { Transcript } from './Transcript'
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   onToggleExpand: () => void
   onSeen: () => void
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
+  onSetModel: (model: string | null) => void
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
@@ -75,6 +77,18 @@ export function SessionCard(props: Props) {
           </div>
         </div>
         <div className="card-actions">
+          <select
+            className="model-select"
+            value={session.model ?? ''}
+            title="Modelo desta sessão (vale a partir do próximo turno)"
+            onChange={(e) => props.onSetModel(e.target.value || null)}
+          >
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
           <StatusDot status={session.status} />
           {session.status === 'working' && (
             <button className="icon" title="Interromper turno" onClick={props.onInterrupt}>

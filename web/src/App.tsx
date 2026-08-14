@@ -3,10 +3,22 @@ import type { ClientMsg, ServerMsg } from '../../shared/types'
 import { api } from './api'
 import { HistoryPanel } from './components/HistoryPanel'
 import { NewChatModal } from './components/NewChatModal'
+import { ProjectFilter } from './components/ProjectFilter'
 import { ProjectsModal } from './components/ProjectsModal'
 import { SessionCard } from './components/SessionCard'
 import { initialState, reducer } from './store'
 import { connectWS, type WSHandle } from './ws'
+
+const HIDDEN_KEY = 'greed:hiddenProjects'
+
+function loadHidden(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY)
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
 
 function showNotification(msg: Extract<ServerMsg, { type: 'notify' }>) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
@@ -26,6 +38,7 @@ export function App() {
   const [modal, setModal] = useState<'none' | 'new' | 'projects'>('none')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [hiddenProjects, setHiddenProjects] = useState<Set<string>>(loadHidden)
   const inputRefs = useRef(new Map<string, HTMLTextAreaElement>())
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
@@ -67,6 +80,36 @@ export function App() {
     [state.sessions],
   )
 
+  // projetos que têm ao menos um card aberto (base do filtro), com contagem
+  const projectsOnBoard = useMemo(() => {
+    const counts = new Map<string, { id: string; name: string; count: number }>()
+    for (const s of openSessions) {
+      const cur = counts.get(s.projectId)
+      if (cur) cur.count += 1
+      else counts.set(s.projectId, { id: s.projectId, name: s.projectName, count: 1 })
+    }
+    return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [openSessions])
+
+  const visibleSessions = useMemo(
+    () => openSessions.filter((s) => !hiddenProjects.has(s.projectId)),
+    [openSessions, hiddenProjects],
+  )
+
+  const toggleProjectFilter = useCallback((projectId: string) => {
+    setHiddenProjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      try {
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]))
+      } catch {
+        // localStorage indisponível — filtro só não persiste
+      }
+      return next
+    })
+  }, [])
+
   // ignora id de expansão obsoleto (sessão fechada por outra aba, etc.)
   const expanded = expandedId && state.sessions[expandedId]?.open ? expandedId : null
 
@@ -86,7 +129,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         if (e.key >= '1' && e.key <= '9') {
-          const target = openSessions[Number(e.key) - 1]
+          const target = visibleSessions[Number(e.key) - 1]
           if (target) {
             e.preventDefault()
             focusCard(target.id)
@@ -107,11 +150,20 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [openSessions, focusCard])
+  }, [visibleSessions, focusCard])
 
   const requestNotif = () => {
     void Notification.requestPermission().then(setNotifPerm)
   }
+
+  const clearFilter = useCallback(() => {
+    setHiddenProjects(new Set())
+    try {
+      localStorage.removeItem(HIDDEN_KEY)
+    } catch {
+      // ignora
+    }
+  }, [])
 
   return (
     <div className="app">
@@ -128,6 +180,13 @@ export function App() {
             <button onClick={requestNotif} title="Notificações de desktop quando um chat terminar">
               🔔 Ativar notificações
             </button>
+          )}
+          {projectsOnBoard.length > 1 && (
+            <ProjectFilter
+              projects={projectsOnBoard}
+              hidden={hiddenProjects}
+              onToggle={toggleProjectFilter}
+            />
           )}
           <button onClick={() => setModal('projects')}>Projetos</button>
           <button onClick={() => setHistoryOpen(true)}>
@@ -150,9 +209,17 @@ export function App() {
             ⌘K abre um chat · ⌘1–9 pula entre cards · cards fechados ficam no Histórico
           </p>
         </div>
+      ) : visibleSessions.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-logo">🫥</div>
+          <p>Todos os projetos estão ocultos pelo filtro.</p>
+          <button className="primary" onClick={clearFilter}>
+            Mostrar todos
+          </button>
+        </div>
       ) : (
         <main className="grid">
-          {openSessions.map((s, i) => (
+          {visibleSessions.map((s, i) => (
             <SessionCard
               key={s.id}
               session={s}
@@ -172,6 +239,7 @@ export function App() {
               onPermission={(requestId, behavior) =>
                 send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
               }
+              onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
               registerInput={(el) => {
                 if (el) inputRefs.current.set(s.id, el)
                 else inputRefs.current.delete(s.id)

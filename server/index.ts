@@ -64,6 +64,9 @@ hub.onMessage((msg) => {
     case 'mark_read':
       manager.markRead(msg.sessionId)
       break
+    case 'set_model':
+      manager.setModel(msg.sessionId, msg.model)
+      break
   }
 })
 
@@ -90,9 +93,13 @@ app.delete('/api/projects/:id', (req, res) => {
 
 app.post('/api/sessions', (req, res) => {
   try {
-    const { projectId, prompt } = (req.body ?? {}) as { projectId?: string; prompt?: string }
+    const { projectId, prompt, model } = (req.body ?? {}) as {
+      projectId?: string
+      prompt?: string
+      model?: string | null
+    }
     if (!prompt || !prompt.trim()) throw new Error('O primeiro prompt é obrigatório')
-    const session = manager.createSession(String(projectId ?? ''), prompt)
+    const session = manager.createSession(String(projectId ?? ''), prompt, model ?? null)
     res.json(session)
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) })

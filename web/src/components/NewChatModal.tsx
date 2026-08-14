@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
+import { MODELS } from '../models'
 
 interface Props {
   projects: Project[]
@@ -10,6 +11,7 @@ interface Props {
 
 export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
+  const [model, setModel] = useState('')
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -25,7 +27,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     setBusy(true)
     setError(null)
     try {
-      await api.newSession(effectiveId, prompt)
+      await api.newSession(effectiveId, prompt, model || null)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -52,6 +54,16 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {p.path}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Modelo
+              <select value={model} onChange={(e) => setModel(e.target.value)}>
+                {MODELS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
                   </option>
                 ))}
               </select>

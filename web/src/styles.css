@@ -140,6 +140,60 @@ kbd {
   align-items: center;
 }
 
+/* ── filtro de projetos ─────────────────────────────── */
+
+.filter {
+  position: relative;
+}
+
+.filter > button.filter-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 200px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.filter-item:hover {
+  background: #1a202a;
+}
+
+.filter-item input {
+  accent-color: var(--accent);
+}
+
+.filter-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-count {
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+
 /* ── grid ───────────────────────────────────────────── */
 
 .grid {
@@ -256,6 +310,27 @@ kbd {
   align-items: center;
   gap: 2px;
   flex: none;
+}
+
+.model-select {
+  background: #1b212a;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-right: 4px;
+  max-width: 92px;
+  cursor: pointer;
+}
+
+.model-select:hover {
+  color: var(--text);
+}
+
+.model-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .status-dot {
