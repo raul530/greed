@@ -1,139 +1,38 @@
-# 💰 Greed
+# greed
 
-Orquestrador local de chats Claude — todos os seus chats ao mesmo tempo, num grid
-estilo bento box, como o overview de um RTS.
+orchestrator for claude code threads.
 
-Cada card é uma sessão completa do [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk)
-rodando no working directory de um projeto seu, com streaming em tempo real,
-pedidos de permissão dentro do card, resume com contexto completo e **memória
-persistente por projeto** que vai se acumulando a cada sessão.
+many claude sessions at once, in a grid, like an rts overview. you send a prompt, the chat runs on its own, the card glows when it is done so you stop forgetting finished work.
 
-## Requisitos
+## what it is
 
-- Node.js 18+
-- [Claude Code](https://claude.com/claude-code) instalado e logado (`claude login`).
-  O Greed autentica pela sua assinatura via o login existente do Claude Code —
-  **nunca pede nem armazena API key** (a variável `ANTHROPIC_API_KEY` é inclusive
-  removida do ambiente das sessões para garantir isso).
+a local web app on top of the claude agent sdk. single user, no accounts, no cloud. each card is a full claude code session running in a project folder, with live streaming, in-card permissions, resume, and memory.
 
-## Rodando
+auth is your claude subscription via the existing claude code login. it never asks for or stores an api key.
+
+## run
+
+needs node 18+ and claude code installed and logged in (`claude login`).
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abra http://localhost:5173. O backend sobe em `127.0.0.1:4517` (somente localhost).
+then open http://localhost:5173.
 
-Para rodar sem o Vite dev server: `npm run build` e depois `npm start`
-(serve o frontend buildado direto do backend, em http://localhost:4517).
+## what it does
 
-## Uso
+- projects: register a folder (like a repo). the session runs there and uses its claude.md and .mcp.json.
+- memory: each project remembers durable facts across sessions.
+- documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
+- per chat: pick model (explicit version), reasoning effort, and permission mode (ask, or autonomous by default).
+- attachments: paperclip or drag and drop.
+- themes: orange, purple, green.
+- shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
-1. **Projetos** → registre pastas. Cada projeto é uma pasta com seu próprio
-   `CLAUDE.md` e `.mcp.json` (formato padrão do Claude Code — seus MCPs de
-   Atlassian, Slack, Drive etc. funcionam sem mudança). A sessão roda com esse
-   working directory.
-2. **+ Novo chat** (⌘K) → escolha o projeto, escreva o primeiro prompt. O card
-   abre no grid e o título é gerado automaticamente.
-3. O **✕** só tira o card da tela — a sessão vai para o **Histórico** e pode ser
-   reaberta a qualquer momento com contexto completo (resume do SDK).
+## not in scope
 
-## Modelo e esforço por chat
+multi user, remote deploy, mobile.
 
-Cada card escolhe seu próprio **modelo** (com versão explícita — importa pro
-consumo: Opus 5, Opus 4.8, Sonnet 5, Fable 5, Haiku 4.5) e seu **esforço de
-raciocínio** (`low` → `max`; padrão do SDK é `high`). Define no "Novo chat" e
-troca a qualquer momento pelos dois seletores no cabeçalho do card — vale a
-partir do próximo turno (via `query.setModel` e `applyFlagSettings({ effortLevel })`
-do SDK). Esforço maior = mais raciocínio, mais lento e mais consumo.
-
-O modelo que aparece nos seletores é o que **vai** rodar; o que o modelo "acha"
-que é numa resposta não é confiável. Nota de consumo: o Claude Code faz uma
-chamada interna de Haiku por sessão (resumo/quota), então ela aparece no uso
-mesmo que o card esteja em outro modelo.
-
-## Anexar arquivos
-
-Botão **📎** no input do card, ou **arraste e solte** o arquivo em cima do card.
-Comportamento inteligente:
-
-- **Texto pequeno** (`.md`, `.txt`, código… ≤ 64KB) → o conteúdo entra inline no
-  contexto da mensagem (o agente já lê direto, sem abrir arquivo).
-- **Grande ou binário** → é salvo em `greed-anexos/` dentro da pasta do projeto e
-  a mensagem referencia o caminho; o agente abre com Read/Edit (persiste e é
-  editável).
-
-Todo anexo (inclusive os inline) também alimenta a base de conhecimento do
-projeto (abaixo). Se a pasta do projeto for um repositório git, considere
-adicionar `greed-anexos/` ao `.gitignore`.
-
-## Base de conhecimento de documentos
-
-Todo arquivo anexado vira memória de documento durável do projeto:
-
-- **Extração de texto nativa** (sem dependências, sem custo de tokens): PDF via
-  PDFKit (`osascript`), DOCX/RTF/ODT via `textutil`, XLSX/PPTX via `python3`
-  stdlib, texto/markdown/csv direto. O texto extraído fica em
-  `greed-anexos/_texto/`.
-- **Descrição de 1 linha** por doc (uma passada curta de Haiku na ingestão).
-- **Catálogo injetado** no system prompt de **toda sessão** do projeto: o agente
-  sempre sabe *quais* documentos existem, *do que* são e *onde* estão — inclusive
-  num chat **novo, meses depois** — e abre o original/texto sob demanda (Read) ou
-  busca no acervo (Grep em `./greed-anexos/_texto`).
-- Índice completo greppável em `greed-anexos/INDEX.md`; metadados em
-  `data/docs/<projectId>.json`. Dedup por hash (reanexar = 0 trabalho). Custo por
-  sessão: **0 chamadas** além do catálogo (texto já injetado).
-
-PDF escaneado (sem camada de texto) é catalogado e lido pelo agente via visão
-nativa do Read; OCR dedicado fica pra depois.
-
-## Memória por projeto (clusters)
-
-Cada projeto é um **cluster de memória próprio**. Ao fim de cada turno, um modelo
-barato (Haiku) extrai memórias duráveis da conversa — decisões, preferências,
-fatos estáveis do domínio, entidades, tarefas em andamento — agrupadas por tópico.
-Essa memória é **compartilhada entre todos os chats daquele projeto** e reinjetada
-no system prompt das próximas sessões. Ou seja: quanto mais você usa um projeto,
-mais contexto ele carrega sozinho.
-
-- É separada e complementar ao `CLAUDE.md` que você mantém à mão: o `CLAUDE.md` é
-  o contexto curado por você; a memória é o que o Greed aprende automaticamente.
-- Fica em `data/memory/<projectId>.json` (local, fora do git). Segredos, tokens e
-  senhas são explicitamente excluídos na extração.
-- Teto de 250 itens por projeto (as mais antigas são descartadas).
-
-### Estados do card
-
-| Estado | Visual |
-| --- | --- |
-| Trabalhando | ponto azul pulsando + indicador de atividade |
-| Terminou | borda verde brilhando até você clicar no card + notificação de desktop |
-| Esperando você | borda âmbar brilhando + pedido de permissão dentro do card (Permitir/Negar) |
-| Idle | ponto apagado |
-
-### Atalhos
-
-- `⌘/Ctrl + 1..9` — pula para o card N (control groups de RTS).
-  No Chrome/macOS use `Ctrl` (o navegador reserva `⌘+número` para trocar de aba).
-- `⌘/Ctrl + K` — novo chat
-- `Enter` envia · `Shift+Enter` quebra linha · `⌘⏎` envia no modal
-- `Esc` — fecha modal / fullscreen
-- Duplo clique no cabeçalho (ou ⤢) — expande o card para fullscreen
-
-Ative as notificações de desktop pelo sininho na barra superior para ser avisado
-quando um chat terminar ou pedir permissão, mesmo com a janela em segundo plano.
-
-## Arquitetura
-
-```
-server/   Node + Express + ws — um SessionManager mantém cada sessão do Agent SDK
-          viva em modo streaming input; canUseTool vira pedido de permissão no card;
-          Stop/SessionEnd hooks + result marcam os estados; memory.ts acumula a
-          memória por projeto e a reinjeta; transcripts e session_ids persistem em
-          data/ (gitignored). WebSocket com verificação de Origin (só local).
-web/      Vite + React — grid de cards, streaming via WebSocket, markdown, tema escuro
-shared/   tipos do protocolo WS compartilhados entre server e web
-```
-
-Single user, 100% local. Fora de escopo: multi-usuário, deploy remoto, mobile.
+built on macos (document text extraction uses native macos tools).
