@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
 import { api } from '../api'
-import { shouldInline } from '../attachments'
+import { filesFromClipboard, shouldInline } from '../attachments'
 import { EFFORTS, MODELS, permShort } from '../models'
 import { Transcript } from './Transcript'
 
@@ -279,6 +279,14 @@ export function SessionCard(props: Props) {
                   : 'Mensagem… (Enter envia, 📎 ou arraste p/ anexar)'
             }
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              // print/cópia de imagem colada com ctrl+v vira anexo
+              const files = filesFromClipboard(e.clipboardData)
+              if (files.length > 0) {
+                e.preventDefault()
+                void addFiles(files)
+              }
+            }}
             onKeyDown={(e) => {
               // não envia no meio de composição IME (acentos, CJK)
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

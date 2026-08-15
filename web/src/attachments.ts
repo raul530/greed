@@ -28,3 +28,35 @@ export function isTextFile(file: File): boolean {
 export function shouldInline(file: File): boolean {
   return isTextFile(file) && file.size <= INLINE_MAX
 }
+
+const MIME_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'application/pdf': 'pdf',
+}
+
+export function extFromMime(type: string): string {
+  return MIME_EXT[type] ?? (type.split('/')[1] || 'bin')
+}
+
+/** Extrai arquivos coláveis do clipboard (imagens de print/cópia), com nome único. */
+export function filesFromClipboard(dt: DataTransfer): File[] {
+  const raw: File[] = [...(dt.files ?? [])]
+  if (raw.length === 0) {
+    for (const item of [...(dt.items ?? [])]) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile()
+        if (f) raw.push(f)
+      }
+    }
+  }
+  const stamp = Date.now()
+  return raw.map((f, i) => {
+    const generic = !f.name || /^image\.\w+$/i.test(f.name)
+    const name = generic ? `colado-${stamp}-${i}.${extFromMime(f.type)}` : f.name
+    return generic ? new File([f], name, { type: f.type }) : f
+  })
+}
