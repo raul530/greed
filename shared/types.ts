@@ -20,6 +20,8 @@ export interface SessionMeta {
   model: string | null
   /** nível de esforço/raciocínio ('low'..'max'); null = padrão do modelo (high) */
   effort: string | null
+  /** política de permissão: 'default' (pergunta) | 'acceptEdits' | 'bypassPermissions' (não pergunta) */
+  permissionMode: string
   open: boolean
   status: CardStatus
   attention: Attention
@@ -64,6 +66,7 @@ export type ClientMsg =
   | { type: 'mark_read'; sessionId: string }
   | { type: 'set_model'; sessionId: string; model: string | null }
   | { type: 'set_effort'; sessionId: string; effort: string | null }
+  | { type: 'set_permission_mode'; sessionId: string; mode: string }
 
 export type ServerMsg =
   | {

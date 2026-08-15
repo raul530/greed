@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
 import { api } from '../api'
 import { shouldInline } from '../attachments'
-import { EFFORTS, MODELS } from '../models'
+import { EFFORTS, MODELS, permShort } from '../models'
 import { Transcript } from './Transcript'
 
 interface Props {
@@ -21,6 +21,7 @@ interface Props {
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
   onSetModel: (model: string | null) => void
   onSetEffort: (effort: string | null) => void
+  onSetPermissionMode: (mode: string) => void
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
@@ -185,6 +186,21 @@ export function SessionCard(props: Props) {
               </option>
             ))}
           </select>
+          <button
+            className={`perm-toggle ${session.permissionMode}`}
+            title={
+              session.permissionMode === 'bypassPermissions'
+                ? 'Autônomo: roda tools sem pedir. Clique para voltar a perguntar.'
+                : 'Pede aprovação. Clique para rodar sem perguntar (autônomo).'
+            }
+            onClick={() =>
+              props.onSetPermissionMode(
+                session.permissionMode === 'bypassPermissions' ? 'default' : 'bypassPermissions',
+              )
+            }
+          >
+            {permShort(session.permissionMode)}
+          </button>
           <StatusDot status={session.status} />
           {session.status === 'working' && (
             <button className="icon" title="Interromper turno" onClick={props.onInterrupt}>

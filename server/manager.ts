@@ -1,6 +1,7 @@
 import {
   query,
   type EffortLevel,
+  type PermissionMode,
   type PermissionResult,
   type Query,
   type SDKMessage,
@@ -20,6 +21,11 @@ import type { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fallbackTitle, generateTitle } from './titles'
 import { now, summarizeToolInput, truncate, uid } from './util'
+
+const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
+function normalizePermMode(mode?: string): string {
+  return mode && PERM_MODES.has(mode) ? mode : 'default'
+}
 
 /** Fila async que alimenta o modo de input streaming do SDK. */
 class AsyncQueue<T> implements AsyncIterable<T> {
@@ -87,6 +93,7 @@ export class SessionManager {
       s.status = 'idle'
       s.model = s.model ?? null // compat com sessões salvas antes do seletor de modelo
       s.effort = s.effort ?? null
+      s.permissionMode = s.permissionMode ?? 'default'
       this.sessions.set(s.id, s)
     }
   }
@@ -109,6 +116,7 @@ export class SessionManager {
     prompt: string,
     model?: string | null,
     effort?: string | null,
+    permissionMode?: string,
   ): SessionMeta {
     const project = this.projects.get(projectId)
     if (!project) throw new Error('Projeto não encontrado')
@@ -120,6 +128,7 @@ export class SessionManager {
       sdkSessionId: null,
       model: model && model.trim() ? model.trim() : null,
       effort: effort && effort.trim() ? effort.trim() : null,
+      permissionMode: normalizePermMode(permissionMode),
       open: true,
       status: 'idle',
       attention: null,
@@ -228,6 +237,26 @@ export class SessionManager {
     const live = this.live.get(sessionId)
     // aplica ao vivo (escopo da sessão); vale a partir do próximo turno
     if (live) void live.q.applyFlagSettings({ effortLevel: next as EffortLevel | null }).catch(() => {})
+  }
+
+  setPermissionMode(sessionId: string, mode: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const next = normalizePermMode(mode)
+    if (session.permissionMode === next) return
+    this.touch(session, { permissionMode: next })
+    const live = this.live.get(sessionId)
+    if (!live) return
+    void live.q.setPermissionMode(next as PermissionMode).catch(() => {})
+    // ao ligar "não perguntar", libera qualquer pedido que já esteja aberto no card
+    if (next === 'bypassPermissions' && live.pending.size > 0) {
+      for (const entry of [...live.pending.values()]) {
+        entry.resolve({
+          behavior: 'allow',
+          updatedInput: entry.request.input as Record<string, unknown>,
+        })
+      }
+    }
   }
 
   closeCard(sessionId: string): void {
@@ -343,7 +372,9 @@ export class SessionManager {
         },
         settingSources: ['user', 'project', 'local'],
         ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
-        permissionMode: 'default',
+        permissionMode: session.permissionMode as PermissionMode,
+        // permite ligar o modo "não perguntar" ao vivo via setPermissionMode
+        allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
         abortController: abort,
         // garante auth pela assinatura (login do Claude Code), nunca por API key

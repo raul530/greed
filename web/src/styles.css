@@ -526,6 +526,34 @@ kbd {
   color: var(--text);
 }
 
+.perm-toggle {
+  font: 9px var(--mono);
+  letter-spacing: 0.1em;
+  padding: 2px 5px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--sunk);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.perm-toggle:hover {
+  border-color: var(--primary);
+  color: var(--glow);
+  background: var(--fill-faint);
+}
+
+.perm-toggle.bypassPermissions {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--bg);
+}
+
+.perm-toggle.acceptEdits {
+  border-color: var(--glow);
+  color: var(--glow);
+}
+
 .status-dot {
   width: 7px;
   height: 7px;

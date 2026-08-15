@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
-import { EFFORTS, MODELS } from '../models'
+import { EFFORTS, MODELS, PERMISSION_MODES } from '../models'
+
+const PERM_KEY = 'greed:permMode'
 
 interface Props {
   projects: Project[]
@@ -13,6 +15,13 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
+  const [permMode, setPermMode] = useState(() => {
+    try {
+      return localStorage.getItem(PERM_KEY) ?? 'default'
+    } catch {
+      return 'default'
+    }
+  })
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -28,7 +37,12 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     setBusy(true)
     setError(null)
     try {
-      await api.newSession(effectiveId, prompt, model || null, effort || null)
+      try {
+        localStorage.setItem(PERM_KEY, permMode)
+      } catch {
+        // localStorage indisponível — só não persiste a preferência
+      }
+      await api.newSession(effectiveId, prompt, model || null, effort || null, permMode)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -81,9 +95,20 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                 </select>
               </label>
             </div>
+            <label>
+              Permissões
+              <select value={permMode} onChange={(e) => setPermMode(e.target.value)}>
+                {PERMISSION_MODES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <p className="field-hint">
               Modelo com versão explícita (importa pro consumo). Esforço maior = mais raciocínio, mais
-              lento e mais consumo. Dá pra trocar os dois no card depois.
+              lento e mais consumo. "Não perguntar" roda tools (bash, edições, MCP) sem pedir aprovação.
+              Dá pra trocar tudo no card depois.
             </p>
             <label>
               Primeiro prompt

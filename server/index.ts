@@ -71,6 +71,9 @@ hub.onMessage((msg) => {
     case 'set_effort':
       manager.setEffort(msg.sessionId, msg.effort)
       break
+    case 'set_permission_mode':
+      manager.setPermissionMode(msg.sessionId, msg.mode)
+      break
   }
 })
 
@@ -97,14 +100,21 @@ app.delete('/api/projects/:id', (req, res) => {
 
 app.post('/api/sessions', (req, res) => {
   try {
-    const { projectId, prompt, model, effort } = (req.body ?? {}) as {
+    const { projectId, prompt, model, effort, permissionMode } = (req.body ?? {}) as {
       projectId?: string
       prompt?: string
       model?: string | null
       effort?: string | null
+      permissionMode?: string
     }
     if (!prompt || !prompt.trim()) throw new Error('O primeiro prompt é obrigatório')
-    const session = manager.createSession(String(projectId ?? ''), prompt, model ?? null, effort ?? null)
+    const session = manager.createSession(
+      String(projectId ?? ''),
+      prompt,
+      model ?? null,
+      effort ?? null,
+      permissionMode,
+    )
     res.json(session)
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) })

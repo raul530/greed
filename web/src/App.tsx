@@ -257,6 +257,9 @@ export function App() {
               }
               onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
               onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}
+              onSetPermissionMode={(mode) =>
+                send({ type: 'set_permission_mode', sessionId: s.id, mode })
+              }
               registerInput={(el) => {
                 if (el) inputRefs.current.set(s.id, el)
                 else inputRefs.current.delete(s.id)

@@ -32,3 +32,18 @@ export function effortLabel(value: string | null | undefined): string {
   const found = EFFORTS.find((e) => e.value === (value ?? ''))
   return found ? found.label : (value ?? 'Padrão')
 }
+
+// Política de permissão por chat.
+export const PERMISSION_MODES: Option[] = [
+  { value: 'default', label: 'Perguntar sempre' },
+  { value: 'acceptEdits', label: 'Auto-edições (pergunta o resto)' },
+  { value: 'bypassPermissions', label: 'Não perguntar (autônomo)' },
+]
+
+/** rótulo curto para o botão do header */
+export function permShort(mode: string): string {
+  if (mode === 'bypassPermissions') return 'AUTO'
+  if (mode === 'acceptEdits') return 'EDITS'
+  return 'ASK'
+}
+
