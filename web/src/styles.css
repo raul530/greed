@@ -1093,6 +1093,42 @@ kbd {
   border-color: var(--primary);
 }
 
+.codebase-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.codebase-path {
+  flex: 1;
+  min-width: 0;
+  font: 11px var(--mono);
+  color: var(--text);
+  background: var(--sunk);
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  padding: 8px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.codebase-badge {
+  font: 9px var(--mono);
+  color: var(--bg);
+  background: var(--primary);
+  border-radius: var(--r);
+  padding: 0 4px;
+  letter-spacing: 0.04em;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .field-row {
   display: flex;
   gap: 12px;

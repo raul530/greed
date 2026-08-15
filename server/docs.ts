@@ -172,22 +172,30 @@ export function ingestDoc(input: {
   })
 }
 
-/** Catálogo compacto (1 linha/doc, cap 40) para injetar no system prompt. null se vazio. */
-export function renderDocCatalog(projectId: string, projectName: string): string | null {
+/** Catálogo compacto (1 linha/doc, cap 40) para injetar no system prompt. null se vazio.
+ *  Usa caminhos absolutos (projectPath), então funciona mesmo quando o cwd é um codebase. */
+export function renderDocCatalog(
+  projectId: string,
+  projectName: string,
+  projectPath: string,
+): string | null {
   const docs = load(projectId)
   if (docs.length === 0) return null
+  const abs = (rel: string) => path.join(projectPath, rel)
   const shown = [...docs].sort((a, b) => b.addedAt - a.addedAt).slice(0, CATALOG_INJECT_MAX)
   let out = `# Base de conhecimento — documentos do projeto "${projectName}" (indexada pelo Greed)\n`
   out +=
     `${docs.length} documento(s). Para o conteúdo completo, use Read no caminho do original; ` +
-    'para buscar por assunto no acervo, use Grep em ./greed-anexos/_texto.\n'
+    `para buscar por assunto no acervo, use Grep em ${abs('greed-anexos/_texto')}.\n`
   for (const d of shown) {
     const desc =
       d.description || (d.status === 'failed' ? 'sem texto extraído — abra o original' : 'documento')
-    const textHint = d.textRelPath ? ` (texto: ./${d.textRelPath})` : ''
-    out += `- ${d.name} — ${desc} — ./${d.relPath}${textHint}\n`
+    const textHint = d.textRelPath ? ` (texto: ${abs(d.textRelPath)})` : ''
+    out += `- ${d.name} — ${desc} — ${abs(d.relPath)}${textHint}\n`
   }
   const rest = docs.length - shown.length
-  if (rest > 0) out += `- …e mais ${rest} documento(s); lista completa em ./greed-anexos/INDEX.md.\n`
+  if (rest > 0) {
+    out += `- …e mais ${rest} documento(s); lista completa em ${abs('greed-anexos/INDEX.md')}.\n`
+  }
   return out
 }

@@ -125,12 +125,13 @@ app.delete('/api/projects/:id', (req, res) => {
 
 app.post('/api/sessions', (req, res) => {
   try {
-    const { projectId, prompt, model, effort, permissionMode } = (req.body ?? {}) as {
+    const { projectId, prompt, model, effort, permissionMode, codebasePath } = (req.body ?? {}) as {
       projectId?: string
       prompt?: string
       model?: string | null
       effort?: string | null
       permissionMode?: string
+      codebasePath?: string | null
     }
     if (!prompt || !prompt.trim()) throw new Error('O primeiro prompt é obrigatório')
     const session = manager.createSession(
@@ -139,6 +140,7 @@ app.post('/api/sessions', (req, res) => {
       model ?? null,
       effort ?? null,
       permissionMode,
+      codebasePath ?? null,
     )
     res.json(session)
   } catch (err) {

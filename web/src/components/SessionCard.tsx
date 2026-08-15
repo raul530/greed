@@ -156,6 +156,11 @@ export function SessionCard(props: Props) {
           <div className="card-project">
             {session.projectName}
             {index < 9 && <kbd className="card-kbd">{index + 1}</kbd>}
+            {session.codebasePath && (
+              <span className="codebase-badge" title={session.codebasePath}>
+                ▸ {session.codebasePath.split('/').filter(Boolean).pop()}
+              </span>
+            )}
           </div>
           <div className="card-title" title={session.title}>
             {session.title}

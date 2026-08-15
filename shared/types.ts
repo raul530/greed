@@ -22,6 +22,8 @@ export interface SessionMeta {
   effort: string | null
   /** política de permissão: 'default' (pergunta) | 'acceptEdits' | 'bypassPermissions' (não pergunta) */
   permissionMode: string
+  /** pasta do código onde o agente trabalha; null = usa a pasta do projeto (contexto) */
+  codebasePath: string | null
   open: boolean
   status: CardStatus
   attention: Attention

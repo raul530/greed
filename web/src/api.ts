@@ -32,10 +32,11 @@ export const api = {
     model: string | null,
     effort: string | null,
     permissionMode: string,
+    codebasePath: string | null,
   ) =>
     j<SessionMeta>('/api/sessions', {
       method: 'POST',
-      body: JSON.stringify({ projectId, prompt, model, effort, permissionMode }),
+      body: JSON.stringify({ projectId, prompt, model, effort, permissionMode, codebasePath }),
     }),
   closeSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/close`, { method: 'POST' }),

@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   query,
   type EffortLevel,
@@ -25,6 +28,19 @@ import { now, summarizeToolInput, truncate, uid } from './util'
 const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
 function normalizePermMode(mode?: string): string {
   return mode && PERM_MODES.has(mode) ? mode : 'default'
+}
+
+/** valida a pasta do codebase; retorna caminho absoluto ou null. */
+function normalizeCodebase(input?: string | null): string | null {
+  if (!input || !input.trim()) return null
+  let p = input.trim()
+  if (p === '~' || p.startsWith('~/')) p = path.join(os.homedir(), p.slice(1))
+  p = path.resolve(p)
+  try {
+    return fs.statSync(p).isDirectory() ? p : null
+  } catch {
+    return null
+  }
 }
 
 /** Fila async que alimenta o modo de input streaming do SDK. */
@@ -94,6 +110,7 @@ export class SessionManager {
       s.model = s.model ?? null // compat com sessões salvas antes do seletor de modelo
       s.effort = s.effort ?? null
       s.permissionMode = s.permissionMode ?? 'default'
+      s.codebasePath = s.codebasePath ?? null
       this.sessions.set(s.id, s)
     }
   }
@@ -117,6 +134,7 @@ export class SessionManager {
     model?: string | null,
     effort?: string | null,
     permissionMode?: string,
+    codebasePath?: string | null,
   ): SessionMeta {
     const project = this.projects.get(projectId)
     if (!project) throw new Error('Projeto não encontrado')
@@ -130,6 +148,7 @@ export class SessionManager {
       effort: effort && effort.trim() ? effort.trim() : null,
       // default do app: não pedir permissão (autônomo)
       permissionMode: normalizePermMode(permissionMode ?? 'bypassPermissions'),
+      codebasePath: normalizeCodebase(codebasePath),
       open: true,
       status: 'idle',
       attention: null,
@@ -354,15 +373,33 @@ export class SessionManager {
     }
     const queue = new AsyncQueue<SDKUserMessage>()
     const abort = new AbortController()
-    const mcpServers = loadProjectMcpServers(project.path)
+    // cwd = codebase (onde o agente edita/commita) ou a própria pasta do projeto
+    const cwd = session.codebasePath ?? project.path
+    const mcpServers = session.codebasePath
+      ? { ...loadProjectMcpServers(project.path), ...loadProjectMcpServers(session.codebasePath) }
+      : loadProjectMcpServers(project.path)
     // memória de fatos + catálogo de documentos do projeto, reinjetados no system prompt
     const projectMemory = renderMemory(session.projectId, session.projectName)
-    const docCatalog = renderDocCatalog(session.projectId, session.projectName)
-    const appended = [projectMemory, docCatalog].filter(Boolean).join('\n\n---\n\n')
+    const docCatalog = renderDocCatalog(session.projectId, session.projectName, project.path)
+    // com codebase, o cwd é outro, então o CLAUDE.md do projeto (contexto) não carrega
+    // nativo — injeta o conteúdo dele à mão
+    let projectContext: string | null = null
+    if (session.codebasePath) {
+      try {
+        const md = fs.readFileSync(path.join(project.path, 'CLAUDE.md'), 'utf8').trim()
+        if (md) projectContext = `# Contexto do projeto "${session.projectName}" (CLAUDE.md)\n\n${md}`
+      } catch {
+        // projeto sem CLAUDE.md — sem contexto extra
+      }
+    }
+    const appended = [projectContext, projectMemory, docCatalog]
+      .filter(Boolean)
+      .join('\n\n---\n\n')
     const q = query({
       prompt: queue,
       options: {
-        cwd: project.path,
+        cwd,
+        ...(session.codebasePath ? { additionalDirectories: [project.path] } : {}),
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(session.model ? { model: session.model } : {}),
         ...(session.effort ? { effort: session.effort as EffortLevel } : {}),

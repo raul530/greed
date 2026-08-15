@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
 import { EFFORTS, MODELS, PERMISSION_MODES } from '../models'
+import { FolderPicker } from './FolderPicker'
 
 const PERM_KEY = 'greed:permMode'
+const codebaseKey = (projectId: string) => `greed:codebase:${projectId}`
 
 interface Props {
   projects: Project[]
@@ -23,6 +25,8 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     }
   })
   const [prompt, setPrompt] = useState('')
+  const [codebase, setCodebase] = useState('')
+  const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
@@ -32,6 +36,16 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   // resolve na hora: cobre projetos que chegam depois do mount ou id que sumiu
   const effectiveId = projects.some((p) => p.id === projectId) ? projectId : (projects[0]?.id ?? '')
 
+  // ao trocar de projeto, recupera o último codebase usado nele
+  useEffect(() => {
+    if (!effectiveId) return
+    try {
+      setCodebase(localStorage.getItem(codebaseKey(effectiveId)) ?? '')
+    } catch {
+      setCodebase('')
+    }
+  }, [effectiveId])
+
   const submit = async () => {
     if (!effectiveId || !prompt.trim() || busy) return
     setBusy(true)
@@ -39,10 +53,11 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     try {
       try {
         localStorage.setItem(PERM_KEY, permMode)
+        localStorage.setItem(codebaseKey(effectiveId), codebase)
       } catch {
         // localStorage indisponível — só não persiste a preferência
       }
-      await api.newSession(effectiveId, prompt, model || null, effort || null, permMode)
+      await api.newSession(effectiveId, prompt, model || null, effort || null, permMode, codebase || null)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -64,7 +79,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
         ) : (
           <>
             <label>
-              Projeto
+              Projeto (contexto)
               <select value={effectiveId} onChange={(e) => setProjectId(e.target.value)}>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -72,6 +87,22 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              Codebase (opcional)
+              <div className="codebase-row">
+                <span className="codebase-path" title={codebase || undefined}>
+                  {codebase || 'usa a pasta do projeto'}
+                </span>
+                <button type="button" onClick={() => setPicking(true)}>
+                  Procurar…
+                </button>
+                {codebase && (
+                  <button type="button" className="icon" title="Limpar" onClick={() => setCodebase('')}>
+                    ✕
+                  </button>
+                )}
+              </div>
             </label>
             <div className="field-row">
               <label>
@@ -106,9 +137,9 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
               </select>
             </label>
             <p className="field-hint">
-              Modelo com versão explícita (importa pro consumo). Esforço maior = mais raciocínio, mais
-              lento e mais consumo. "Não perguntar" roda tools (bash, edições, MCP) sem pedir aprovação.
-              Dá pra trocar tudo no card depois.
+              O projeto dá o contexto (CLAUDE.md, memória, documentos). O codebase é a pasta/repo onde
+              o agente lê, edita e commita — deixe vazio pra trabalhar na própria pasta do projeto.
+              "Não perguntar" roda tools (bash, edições, MCP) sem pedir aprovação.
             </p>
             <label>
               Primeiro prompt
@@ -140,6 +171,15 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
           </>
         )}
       </div>
+      {picking && (
+        <FolderPicker
+          onClose={() => setPicking(false)}
+          onPick={(picked) => {
+            setCodebase(picked)
+            setPicking(false)
+          }}
+        />
+      )}
     </div>
   )
 }
