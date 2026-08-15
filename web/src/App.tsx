@@ -168,12 +168,28 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-logo">💰</span>
-          <b>Greed</b>
-          <span className={state.connected ? 'conn ok' : 'conn off'}>
-            {state.connected ? 'conectado' : 'reconectando…'}
-          </span>
+        <div className="hud-left">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <b>Greed</b>
+            <span className={`live ${state.connected ? 'on' : 'off'}`}>
+              {state.connected ? 'live' : 'offline'}
+            </span>
+          </div>
+          <div className="telemetry">
+            <span className="tcell">
+              <i>sessions</i>
+              <b>{openSessions.length + closedSessions.length}</b>
+            </span>
+            <span className="tcell">
+              <i>in-flight</i>
+              <b>{openSessions.filter((s) => s.status === 'working').length}</b>
+            </span>
+            <span className="tcell">
+              <i>open</i>
+              <b>{openSessions.length}</b>
+            </span>
+          </div>
         </div>
         <div className="topbar-actions">
           {notifPerm === 'default' && (
@@ -200,7 +216,7 @@ export function App() {
 
       {openSessions.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-logo">💰</div>
+          <div className="empty-logo" aria-hidden="true" />
           <p>Nenhum chat aberto.</p>
           <button className="primary" onClick={() => setModal('new')}>
             + Novo chat
@@ -211,7 +227,7 @@ export function App() {
         </div>
       ) : visibleSessions.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-logo">🫥</div>
+          <div className="empty-logo" aria-hidden="true" />
           <p>Todos os projetos estão ocultos pelo filtro.</p>
           <button className="primary" onClick={clearFilter}>
             Mostrar todos
@@ -249,6 +265,11 @@ export function App() {
           ))}
         </main>
       )}
+
+      <footer className="hud-hints">
+        <span>⌘K new · ⌘1–9 jump · drag to attach · esc close</span>
+        <span className="hud-right">greed // local · {state.connected ? 'link ok' : 'link lost'}</span>
+      </footer>
 
       {expanded && <div className="expand-backdrop" onMouseDown={() => setExpandedId(null)} />}
 
