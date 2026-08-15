@@ -17,9 +17,9 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const [effort, setEffort] = useState('')
   const [permMode, setPermMode] = useState(() => {
     try {
-      return localStorage.getItem(PERM_KEY) ?? 'default'
+      return localStorage.getItem(PERM_KEY) ?? 'bypassPermissions'
     } catch {
-      return 'default'
+      return 'bypassPermissions'
     }
   })
   const [prompt, setPrompt] = useState('')

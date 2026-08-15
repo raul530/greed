@@ -10,6 +10,8 @@ import { initialState, reducer } from './store'
 import { connectWS, type WSHandle } from './ws'
 
 const HIDDEN_KEY = 'greed:hiddenProjects'
+const THEME_KEY = 'greed:theme'
+const THEMES = ['orange', 'purple', 'green'] as const
 
 function loadHidden(): Set<string> {
   try {
@@ -39,7 +41,25 @@ export function App() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hiddenProjects, setHiddenProjects] = useState<Set<string>>(loadHidden)
+  const [theme, setTheme] = useState<string>(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) ?? 'orange'
+    } catch {
+      return 'orange'
+    }
+  })
   const inputRefs = useRef(new Map<string, HTMLTextAreaElement>())
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'orange') root.removeAttribute('data-theme')
+    else root.setAttribute('data-theme', theme)
+    try {
+      localStorage.setItem(THEME_KEY, theme)
+    } catch {
+      // localStorage indisponível — tema só não persiste
+    }
+  }, [theme])
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   )
@@ -192,6 +212,17 @@ export function App() {
           </div>
         </div>
         <div className="topbar-actions">
+          <div className="themes" title="Tema">
+            {THEMES.map((t) => (
+              <button
+                key={t}
+                className={`swatch ${t} ${theme === t ? 'active' : ''}`}
+                title={t}
+                aria-label={`tema ${t}`}
+                onClick={() => setTheme(t)}
+              />
+            ))}
+          </div>
           {notifPerm === 'default' && (
             <button onClick={requestNotif} title="Notificações de desktop quando um chat terminar">
               🔔 Ativar notificações

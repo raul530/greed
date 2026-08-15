@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
+import { FolderPicker } from './FolderPicker'
 
 interface Props {
   projects: Project[]
@@ -12,6 +13,7 @@ export function ProjectsModal({ projects, onClose }: Props) {
   const [path, setPath] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [picking, setPicking] = useState(false)
 
   const add = async () => {
     if (!name.trim() || !path.trim() || busy) return
@@ -33,8 +35,9 @@ export function ProjectsModal({ projects, onClose }: Props) {
       <div className="modal">
         <h2>Projetos</h2>
         <p className="modal-hint">
-          Cada projeto é uma pasta. A sessão roda com esse working directory e usa o CLAUDE.md e o
-          .mcp.json (formato padrão do Claude Code) que estiverem lá.
+          Cada projeto é uma pasta (ex.: o repositório do seu código). A sessão roda com esse working
+          directory e usa o CLAUDE.md e o .mcp.json que estiverem lá. Sendo um repo, é só pedir no chat
+          pra commitar, criar branch etc.
         </p>
         {projects.length > 0 && (
           <ul className="project-list">
@@ -71,6 +74,9 @@ export function ProjectsModal({ projects, onClose }: Props) {
             onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void add()}
           />
+          <button onClick={() => setPicking(true)} title="Navegar pelas pastas">
+            Procurar…
+          </button>
           <button className="primary" disabled={!name.trim() || !path.trim() || busy} onClick={() => void add()}>
             Adicionar
           </button>
@@ -80,6 +86,16 @@ export function ProjectsModal({ projects, onClose }: Props) {
           <button onClick={onClose}>Fechar</button>
         </div>
       </div>
+      {picking && (
+        <FolderPicker
+          onClose={() => setPicking(false)}
+          onPick={(picked) => {
+            setPath(picked)
+            if (!name.trim()) setName(picked.split('/').filter(Boolean).pop() ?? '')
+            setPicking(false)
+          }}
+        />
+      )}
     </div>
   )
 }

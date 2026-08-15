@@ -1,37 +1,64 @@
 /* ── Greed — black + orange technical blueprint HUD ────────────────── */
 
 :root {
+  /* tema padrão: blueprint laranja */
+  --primary-rgb: 255, 122, 24;
+  --glow-rgb: 255, 154, 60;
   --bg: #0b0906;
   --panel: #100c07;
   --card: #0a0805;
   --card-head: #0e0a06;
   --sunk: #060503;
-
   --primary: #ff7a18;
   --glow: #ff9a3c;
   --edge: #7a3d10;
-
   --text: #ffb277;
   --muted: #8a5c38;
 
-  --line: rgba(255, 122, 24, 0.22);
-  --line-soft: rgba(255, 122, 24, 0.12);
-  --fill-faint: rgba(255, 122, 24, 0.05);
-  --fill-soft: rgba(255, 122, 24, 0.09);
-  --fill-mid: rgba(255, 122, 24, 0.14);
-
-  /* estados remapeados para o mesmo laranja (diferenciados por padrão/movimento) */
+  /* derivados: seguem o tema via --primary-rgb (resolvido no uso) */
+  --line: rgba(var(--primary-rgb), 0.24);
+  --line-soft: rgba(var(--primary-rgb), 0.13);
+  --fill-faint: rgba(var(--primary-rgb), 0.05);
+  --fill-soft: rgba(var(--primary-rgb), 0.09);
+  --fill-mid: rgba(var(--primary-rgb), 0.14);
   --accent: var(--primary);
   --attn: var(--glow);
-
-  --hatch: repeating-linear-gradient(
-    45deg,
-    transparent 0 3px,
-    var(--fill-mid) 3px 4px
-  );
+  --hatch: repeating-linear-gradient(45deg, transparent 0 3px, var(--fill-mid) 3px 4px);
 
   --r: 2px;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* tema: roxo lavanda */
+:root[data-theme='purple'] {
+  --primary-rgb: 183, 148, 255;
+  --glow-rgb: 212, 188, 255;
+  --bg: #0a0812;
+  --panel: #110d1e;
+  --card: #0a0814;
+  --card-head: #0f0b1b;
+  --sunk: #06040e;
+  --primary: #b794ff;
+  --glow: #d4bcff;
+  --edge: #4a3d70;
+  --text: #cdb8f5;
+  --muted: #806a9f;
+}
+
+/* tema: verde pistache (fundo levantado para leitura, vibe matrix) */
+:root[data-theme='green'] {
+  --primary-rgb: 174, 224, 108;
+  --glow-rgb: 200, 240, 136;
+  --bg: #12180f;
+  --panel: #182013;
+  --card: #10160c;
+  --card-head: #151c10;
+  --sunk: #0c1108;
+  --primary: #aee06c;
+  --glow: #c8f088;
+  --edge: #46602c;
+  --text: #d2ebac;
+  --muted: #85a061;
 }
 
 * {
@@ -250,6 +277,43 @@ kbd {
   padding: 0 12px;
 }
 
+/* seletor de tema (swatches) */
+.themes {
+  display: flex;
+  gap: 5px;
+  margin-right: 4px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+
+.swatch:hover {
+  background: currentColor;
+}
+
+.swatch.active {
+  outline: 1px solid var(--text);
+  outline-offset: 1px;
+}
+
+.swatch.orange {
+  background: #ff7a18;
+}
+
+.swatch.purple {
+  background: #b794ff;
+}
+
+.swatch.green {
+  background: #aee06c;
+}
+
 /* ── filtro de projetos ─────────────────────────────── */
 
 .filter {
@@ -334,26 +398,6 @@ kbd {
     box-shadow 0.2s;
 }
 
-/* registration brackets nos 4 cantos (assinatura blueprint) */
-.card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 3;
-  --t: 11px;
-  --c: var(--edge);
-  background:
-    linear-gradient(var(--c), var(--c)) left top / var(--t) 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) left top / 1px var(--t) no-repeat,
-    linear-gradient(var(--c), var(--c)) right top / var(--t) 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) right top / 1px var(--t) no-repeat,
-    linear-gradient(var(--c), var(--c)) left bottom / var(--t) 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) left bottom / 1px var(--t) no-repeat,
-    linear-gradient(var(--c), var(--c)) right bottom / var(--t) 1px no-repeat,
-    linear-gradient(var(--c), var(--c)) right bottom / 1px var(--t) no-repeat;
-}
-
 .card.expanded {
   position: fixed;
   inset: 20px;
@@ -406,34 +450,34 @@ kbd {
   }
 }
 
-/* terminou: moldura acesa, estável até o clique */
+/* terminou: moldura acesa + luz desfocada atrás, estável até o clique */
 .card.attn-finished {
   border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary) inset, 0 0 22px rgba(255, 122, 24, 0.18);
+  box-shadow:
+    0 0 0 1px var(--primary) inset,
+    0 0 40px 4px rgba(var(--primary-rgb), 0.32),
+    0 0 90px 10px rgba(var(--primary-rgb), 0.16);
 }
 
-.card.attn-finished::before {
-  --c: var(--primary);
-}
-
-/* esperando você: mais forte, com hachura no header e pulso */
+/* esperando você: mais forte, com pulso */
 .card.attn-waiting {
   border-color: var(--glow);
-  box-shadow: 0 0 0 1px var(--glow) inset, 0 0 26px rgba(255, 154, 60, 0.28);
   animation: waitpulse 1.5s ease-in-out infinite;
-}
-
-.card.attn-waiting::before {
-  --c: var(--glow);
 }
 
 @keyframes waitpulse {
   0%,
   100% {
-    box-shadow: 0 0 0 1px var(--glow) inset, 0 0 14px rgba(255, 154, 60, 0.18);
+    box-shadow:
+      0 0 0 1px var(--glow) inset,
+      0 0 34px 3px rgba(var(--glow-rgb), 0.3),
+      0 0 80px 8px rgba(var(--glow-rgb), 0.14);
   }
   50% {
-    box-shadow: 0 0 0 1px var(--glow) inset, 0 0 30px rgba(255, 154, 60, 0.42);
+    box-shadow:
+      0 0 0 1px var(--glow) inset,
+      0 0 52px 6px rgba(var(--glow-rgb), 0.55),
+      0 0 120px 14px rgba(var(--glow-rgb), 0.28);
   }
 }
 
@@ -960,29 +1004,6 @@ kbd {
   height: 54px;
   border: 1px solid var(--edge);
   background: var(--hatch);
-  position: relative;
-}
-
-.empty-logo::before,
-.empty-logo::after {
-  content: '';
-  position: absolute;
-  background: var(--primary);
-}
-
-.empty-logo::before {
-  left: -1px;
-  top: -1px;
-  width: 12px;
-  height: 1px;
-  box-shadow: 0 0 0 0 var(--primary);
-}
-
-.empty-logo::after {
-  left: -1px;
-  top: -1px;
-  width: 1px;
-  height: 12px;
 }
 
 .empty-hint {
@@ -1142,8 +1163,83 @@ kbd {
 
 .project-add {
   display: grid;
-  grid-template-columns: 1fr 2fr auto;
+  grid-template-columns: 1fr 1.6fr auto auto;
   gap: 8px;
+}
+
+/* folder picker */
+.modal.picker {
+  width: min(560px, 92vw);
+}
+
+.picker-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+  color: var(--muted);
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  margin-bottom: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.picker-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  padding: 4px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r);
+  padding: 6px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+.picker-item:hover {
+  background: var(--fill-soft);
+  border-color: var(--line-soft);
+}
+
+.picker-item.up {
+  color: var(--muted);
+}
+
+.picker-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px;
+}
+
+.repo-badge {
+  font: 9px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bg);
+  background: var(--primary);
+  border-radius: var(--r);
+  padding: 1px 5px;
 }
 
 /* ── histórico (drawer) ─────────────────────────────── */

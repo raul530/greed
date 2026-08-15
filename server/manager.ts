@@ -128,7 +128,8 @@ export class SessionManager {
       sdkSessionId: null,
       model: model && model.trim() ? model.trim() : null,
       effort: effort && effort.trim() ? effort.trim() : null,
-      permissionMode: normalizePermMode(permissionMode),
+      // default do app: não pedir permissão (autônomo)
+      permissionMode: normalizePermMode(permissionMode ?? 'bypassPermissions'),
       open: true,
       status: 'idle',
       attention: null,

@@ -12,7 +12,16 @@ async function j<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface BrowseResult {
+  path: string
+  parent: string | null
+  isRepo: boolean
+  entries: { name: string; isRepo: boolean }[]
+}
+
 export const api = {
+  browse: (dir?: string) =>
+    j<BrowseResult>(`/api/browse${dir ? `?path=${encodeURIComponent(dir)}` : ''}`),
   addProject: (name: string, path: string) =>
     j<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name, path }) }),
   removeProject: (id: string) =>

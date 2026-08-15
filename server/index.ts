@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import { WebSocketServer } from 'ws'
@@ -79,6 +80,30 @@ hub.onMessage((msg) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
+})
+
+// Navegador de pastas (só dentro do home) para escolher a pasta/repo de um projeto.
+app.get('/api/browse', (req, res) => {
+  try {
+    const home = os.homedir()
+    let dir = req.query.path ? String(req.query.path) : home
+    if (dir === '~' || dir.startsWith('~/')) dir = path.join(home, dir.slice(1))
+    dir = path.resolve(dir)
+    if (dir !== home && !dir.startsWith(home + path.sep)) dir = home
+    const entries = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => ({ name: e.name, isRepo: fs.existsSync(path.join(dir, e.name, '.git')) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    res.json({
+      path: dir,
+      parent: dir === home ? null : path.dirname(dir),
+      isRepo: fs.existsSync(path.join(dir, '.git')),
+      entries,
+    })
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
 })
 
 app.post('/api/projects', (req, res) => {
