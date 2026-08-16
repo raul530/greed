@@ -11,6 +11,8 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import type {
+  ActivityItem,
+  ActivityStatus,
   PermissionRequest,
   ServerMsg,
   SessionMeta,
@@ -91,6 +93,8 @@ interface LiveSession {
   currentAssistantId: string | null
   /** incrementa a cada mensagem do usuário; usado para timers não confundirem turnos */
   turnSeq: number
+  /** árvore de atividade viva do turno (tool_use_id / task_id → item), efêmera */
+  activity: Map<string, ActivityItem>
 }
 
 export class SessionManager {
@@ -122,10 +126,19 @@ export class SessionManager {
       if (s.open) transcripts[s.id] = this.transcript(s.id)
     }
     const permissions: PermissionRequest[] = []
-    for (const live of this.live.values()) {
+    const activity: Record<string, ActivityItem[]> = {}
+    for (const [id, live] of this.live) {
       for (const p of live.pending.values()) permissions.push(p.request)
+      if (live.activity.size > 0) activity[id] = [...live.activity.values()]
     }
-    return { type: 'snapshot', projects: this.projects.list(), sessions, transcripts, permissions }
+    return {
+      type: 'snapshot',
+      projects: this.projects.list(),
+      sessions,
+      transcripts,
+      permissions,
+      activity,
+    }
   }
 
   createSession(
@@ -174,7 +187,9 @@ export class SessionManager {
     const clean = text.trim()
     if (!clean) return
     this.addEntry(sessionId, { kind: 'user', id: uid(), text: clean, ts: now() })
-    const live = this.live.get(sessionId) ?? this.startLive(session)
+    const existing = this.live.get(sessionId)
+    if (existing) this.clearActivity(sessionId, existing) // árvore limpa no novo turno
+    const live = existing ?? this.startLive(session)
     if (!live) return
     live.turnSeq += 1
     live.queue.push({
@@ -352,6 +367,65 @@ export class SessionManager {
     this.hub.broadcast({ type: 'entry', sessionId, entry })
   }
 
+  // ── atividade viva do turno (efêmera, não persiste) ─────────────────────
+
+  private pushActivity(sessionId: string, live: LiveSession, item: ActivityItem): void {
+    live.activity.set(item.id, item)
+    this.hub.broadcast({ type: 'activity', sessionId, item })
+  }
+
+  private updateActivity(
+    sessionId: string,
+    live: LiveSession,
+    id: string,
+    patch: Partial<ActivityItem>,
+  ): void {
+    const cur = live.activity.get(id)
+    const item: ActivityItem = cur
+      ? { ...cur, ...patch, updatedAt: now() }
+      : {
+          id,
+          parentId: null,
+          kind: 'tool',
+          name: patch.name ?? id,
+          detail: '',
+          status: 'running',
+          ts: now(),
+          updatedAt: now(),
+          ...patch,
+        }
+    live.activity.set(id, item)
+    this.hub.broadcast({ type: 'activity', sessionId, item })
+  }
+
+  private clearActivity(sessionId: string, live: LiveSession): void {
+    if (live.activity.size === 0) return
+    live.activity.clear()
+    this.hub.broadcast({ type: 'activity_clear', sessionId })
+  }
+
+  private reconcileBackground(
+    sessionId: string,
+    live: LiveSession,
+    tasks: { task_id: string; task_type?: string; description?: string }[],
+  ): void {
+    const alive = new Set(tasks.map((t) => t.task_id))
+    for (const [id, it] of live.activity) {
+      if (it.kind === 'task' && !alive.has(id) && it.status === 'running') {
+        this.updateActivity(sessionId, live, id, { status: 'done' })
+      }
+    }
+    for (const t of tasks) {
+      this.updateActivity(sessionId, live, t.task_id, {
+        kind: 'task',
+        name: t.task_type ?? 'task',
+        detail: t.description ?? '',
+        background: true,
+        status: 'running',
+      })
+    }
+  }
+
   private startLive(session: SessionMeta): LiveSession | null {
     const project = this.projects.get(session.projectId)
     if (!project) {
@@ -414,6 +488,8 @@ export class SessionManager {
         // permite ligar o modo "não perguntar" ao vivo via setPermissionMode
         allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
+        // resumo humano do que cada subagente está fazendo (custo mínimo)
+        agentProgressSummaries: true,
         abortController: abort,
         // garante auth pela assinatura (login do Claude Code), nunca por API key
         env: { ...process.env, ANTHROPIC_API_KEY: undefined },
@@ -435,6 +511,7 @@ export class SessionManager {
       pending: new Map(),
       currentAssistantId: null,
       turnSeq: 0,
+      activity: new Map(),
     }
     this.live.set(session.id, live)
     void this.runLoop(session.id, live)
@@ -483,8 +560,137 @@ export class SessionManager {
 
     switch (msg.type) {
       case 'system': {
-        if (msg.subtype === 'init' && msg.session_id && msg.session_id !== session.sdkSessionId) {
-          this.touch(session, { sdkSessionId: msg.session_id })
+        const m = msg as unknown as {
+          subtype: string
+          session_id?: string
+          task_id?: string
+          tool_use_id?: string
+          subagent_type?: string
+          workflow_name?: string
+          task_type?: string
+          description?: string
+          summary?: string
+          last_tool_name?: string
+          status?: string
+          usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
+          patch?: { status?: string; is_backgrounded?: boolean; description?: string }
+          tasks?: { task_id: string; task_type?: string; description?: string }[]
+        }
+        switch (m.subtype) {
+          case 'init':
+            if (m.session_id && m.session_id !== session.sdkSessionId) {
+              this.touch(session, { sdkSessionId: m.session_id })
+            }
+            break
+          case 'task_started':
+            if (m.task_id) {
+              this.pushActivity(sessionId, live, {
+                id: m.task_id,
+                parentId: m.tool_use_id ?? null,
+                kind: m.subagent_type ? 'subagent' : 'task',
+                name: m.subagent_type ?? m.workflow_name ?? m.task_type ?? 'task',
+                detail: m.description ?? '',
+                status: 'running',
+                ts: now(),
+                updatedAt: now(),
+              })
+            }
+            break
+          case 'task_progress':
+            if (m.task_id) {
+              this.updateActivity(sessionId, live, m.task_id, {
+                status: 'running',
+                detail: m.summary ?? m.description ?? '',
+                ...(m.last_tool_name ? { name: m.last_tool_name } : {}),
+                ...(m.usage?.total_tokens != null ? { tokens: m.usage.total_tokens } : {}),
+                ...(m.usage?.tool_uses != null ? { toolUses: m.usage.tool_uses } : {}),
+                ...(m.usage?.duration_ms != null ? { elapsedMs: m.usage.duration_ms } : {}),
+              })
+            }
+            break
+          case 'task_updated':
+            if (m.task_id && m.patch) {
+              const st = m.patch.status
+              const mapped: ActivityStatus | undefined = st
+                ? st === 'running' || st === 'pending'
+                  ? 'running'
+                  : st === 'completed'
+                    ? 'done'
+                    : 'error'
+                : undefined
+              this.updateActivity(sessionId, live, m.task_id, {
+                ...(mapped ? { status: mapped } : {}),
+                ...(m.patch.is_backgrounded != null ? { background: m.patch.is_backgrounded } : {}),
+                ...(m.patch.description ? { detail: m.patch.description } : {}),
+              })
+            }
+            break
+          case 'task_notification':
+            if (m.task_id) {
+              this.updateActivity(sessionId, live, m.task_id, {
+                status: m.status === 'completed' ? 'done' : 'error',
+                ...(m.summary ? { detail: m.summary } : {}),
+                ...(m.usage?.total_tokens != null ? { tokens: m.usage.total_tokens } : {}),
+              })
+            }
+            break
+          case 'background_tasks_changed':
+            if (m.tasks) this.reconcileBackground(sessionId, live, m.tasks)
+            break
+        }
+        break
+      }
+
+      case 'tool_progress': {
+        const m = msg as unknown as {
+          tool_use_id: string
+          tool_name?: string
+          parent_tool_use_id?: string | null
+          elapsed_time_seconds?: number
+          subagent_type?: string
+        }
+        this.updateActivity(sessionId, live, m.tool_use_id, {
+          status: 'running',
+          ...(m.tool_name ? { name: m.tool_name } : {}),
+          parentId: m.parent_tool_use_id ?? null,
+          ...(m.elapsed_time_seconds != null
+            ? { elapsedMs: Math.round(m.elapsed_time_seconds * 1000) }
+            : {}),
+          ...(m.subagent_type ? { kind: 'subagent' as const } : {}),
+        })
+        break
+      }
+
+      case 'user': {
+        const content = (msg as { message: { content: unknown } }).message.content
+        if (!Array.isArray(content)) break // string = prompt do próprio usuário, ignora
+        for (const block of content) {
+          const b = block as {
+            type?: string
+            tool_use_id?: string
+            content?: unknown
+            is_error?: boolean
+          }
+          if (b.type !== 'tool_result' || !b.tool_use_id) continue
+          const isErr = b.is_error === true
+          const preview = truncate(
+            typeof b.content === 'string' ? b.content : JSON.stringify(b.content),
+            200,
+          )
+          const t = this.transcript(sessionId)
+          const cur = t.find((e) => e.id === b.tool_use_id)
+          if (cur && cur.kind === 'tool') {
+            this.replaceEntry(sessionId, {
+              ...cur,
+              status: isErr ? 'error' : 'done',
+              result: preview,
+              ts: now(),
+            })
+          }
+          this.updateActivity(sessionId, live, b.tool_use_id, {
+            status: isErr ? 'error' : 'done',
+            detail: preview,
+          })
         }
         break
       }
@@ -545,12 +751,27 @@ export class SessionManager {
         }
         for (const block of msg.message.content) {
           if (block.type === 'tool_use') {
-            this.addEntry(sessionId, {
+            const summary = summarizeToolInput(block.name, block.input)
+            // tools de topo entram no log; subagentes só na árvore de atividade
+            if (!msg.parent_tool_use_id) {
+              this.addEntry(sessionId, {
+                kind: 'tool',
+                id: block.id, // mantém o id do bloco p/ correlacionar o tool_result
+                name: block.name,
+                summary,
+                status: 'running',
+                ts: now(),
+              })
+            }
+            this.pushActivity(sessionId, live, {
+              id: block.id,
+              parentId: msg.parent_tool_use_id ?? null,
               kind: 'tool',
-              id: uid(),
               name: block.name,
-              summary: summarizeToolInput(block.name, block.input),
+              detail: summary,
+              status: 'running',
               ts: now(),
+              updatedAt: now(),
             })
           }
         }
@@ -567,6 +788,13 @@ export class SessionManager {
 
       case 'result': {
         live.currentAssistantId = null
+        // segurança: tools que não receberam tool_result viram "done"
+        for (const e of [...this.transcript(sessionId)]) {
+          if (e.kind === 'tool' && e.status === 'running') {
+            this.replaceEntry(sessionId, { ...e, status: 'done', ts: now() })
+          }
+        }
+        this.clearActivity(sessionId, live)
         if (msg.subtype !== 'success') {
           const detail =
             'errors' in msg && Array.isArray(msg.errors) && msg.errors.length > 0

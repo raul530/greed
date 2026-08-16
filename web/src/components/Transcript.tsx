@@ -22,13 +22,18 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
           {entry.streaming && <span className="caret" />}
         </div>
       )
-    case 'tool':
+    case 'tool': {
+      const st = entry.status ?? 'done'
       return (
-        <div className="tool-line" title={entry.summary}>
+        <div className="tool-line" data-st={st} title={entry.result || entry.summary}>
+          <span className="tool-mark">
+            {st === 'running' ? <span className="act-spin" /> : st === 'error' ? '✗' : '✓'}
+          </span>
           <span className="tool-name">⚙ {entry.name}</span>
-          <span className="tool-sum">{entry.summary}</span>
+          <span className="tool-sum">{entry.result || entry.summary}</span>
         </div>
       )
+    }
     case 'permission': {
       const label =
         entry.decision === 'allow'

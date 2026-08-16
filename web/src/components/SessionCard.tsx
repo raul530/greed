@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import type { PermissionRequest, SessionMeta, TranscriptEntry } from '../../../shared/types'
+import type {
+  ActivityItem,
+  PermissionRequest,
+  SessionMeta,
+  TranscriptEntry,
+} from '../../../shared/types'
 import { api } from '../api'
 import { filesFromClipboard, shouldInline } from '../attachments'
 import { EFFORTS, MODELS, permShort } from '../models'
+import { ActivityRail } from './activity/ActivityRail'
+import { ActivityTree } from './activity/ActivityTree'
+import { useActivity } from './activity/useActivity'
 import { Transcript } from './Transcript'
 
 interface Props {
   session: SessionMeta
   entries: TranscriptEntry[]
   permissions: PermissionRequest[]
+  activity: ActivityItem[]
   index: number
   expanded: boolean
   connected: boolean
@@ -44,6 +53,8 @@ export function SessionCard(props: Props) {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
+  const [treeOpen, setTreeOpen] = useState(false)
+  const act = useActivity(props.activity)
   const rootRef = useRef<HTMLElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -224,11 +235,20 @@ export function SessionCard(props: Props) {
           </button>
         </div>
       </header>
-      <Transcript
-        entries={entries}
-        permissions={permissions}
+      <div className="card-body">
+        <Transcript
+          entries={entries}
+          permissions={permissions}
+          working={session.status === 'working'}
+          onPermission={props.onPermission}
+        />
+        {treeOpen && <ActivityTree a={act} onClose={() => setTreeOpen(false)} />}
+      </div>
+      <ActivityRail
+        a={act}
         working={session.status === 'working'}
-        onPermission={props.onPermission}
+        open={treeOpen}
+        onToggle={() => setTreeOpen((v) => !v)}
       />
       <footer className="card-input">
         {attachments.length > 0 && (

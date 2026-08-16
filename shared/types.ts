@@ -32,10 +32,37 @@ export interface SessionMeta {
   lastError: string | null
 }
 
+export type ActivityStatus = 'running' | 'done' | 'error'
+export type ActivityKind = 'tool' | 'subagent' | 'task'
+
+/** item efêmero da árvore de atividade de um turno (não persiste no transcript). */
+export interface ActivityItem {
+  id: string // tool_use_id (tools) ou task_id (subagents/tasks em 2º plano)
+  parentId: string | null // parent_tool_use_id → aninhamento
+  kind: ActivityKind
+  name: string
+  detail: string
+  status: ActivityStatus
+  tokens?: number
+  toolUses?: number
+  elapsedMs?: number
+  background?: boolean
+  ts: number
+  updatedAt: number
+}
+
 export type TranscriptEntry =
   | { kind: 'user'; id: string; text: string; ts: number }
   | { kind: 'assistant'; id: string; text: string; ts: number; streaming?: boolean }
-  | { kind: 'tool'; id: string; name: string; summary: string; ts: number }
+  | {
+      kind: 'tool'
+      id: string // = id do bloco tool_use (correlaciona tool_result/tool_progress)
+      name: string
+      summary: string
+      status: ActivityStatus
+      result?: string
+      ts: number
+    }
   | {
       kind: 'permission'
       id: string
@@ -77,6 +104,7 @@ export type ServerMsg =
       sessions: SessionMeta[]
       transcripts: Record<string, TranscriptEntry[]>
       permissions: PermissionRequest[]
+      activity: Record<string, ActivityItem[]>
     }
   | { type: 'session'; session: SessionMeta }
   | { type: 'transcript'; sessionId: string; entries: TranscriptEntry[] }
@@ -91,3 +119,5 @@ export type ServerMsg =
     }
   | { type: 'notify'; sessionId: string; kind: 'finished' | 'waiting'; title: string; body: string }
   | { type: 'projects'; projects: Project[] }
+  | { type: 'activity'; sessionId: string; item: ActivityItem }
+  | { type: 'activity_clear'; sessionId: string }

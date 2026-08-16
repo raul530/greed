@@ -1,4 +1,5 @@
 import type {
+  ActivityItem,
   PermissionRequest,
   Project,
   ServerMsg,
@@ -13,6 +14,8 @@ export interface ClientState {
   transcripts: Record<string, TranscriptEntry[]>
   /** pedidos de permissão em aberto por sessão (um turno pode ter vários) */
   permissions: Record<string, PermissionRequest[]>
+  /** árvore de atividade viva por sessão (efêmera) */
+  activity: Record<string, ActivityItem[]>
 }
 
 export const initialState: ClientState = {
@@ -21,6 +24,7 @@ export const initialState: ClientState = {
   sessions: {},
   transcripts: {},
   permissions: {},
+  activity: {},
 }
 
 export type Action = { type: 'ws_status'; connected: boolean } | { type: 'server'; msg: ServerMsg }
@@ -49,6 +53,7 @@ export function reducer(state: ClientState, action: Action): ClientState {
         sessions,
         transcripts: msg.transcripts,
         permissions,
+        activity: msg.activity ?? {},
       }
     }
     case 'projects':
@@ -97,6 +102,18 @@ export function reducer(state: ClientState, action: Action): ClientState {
       if (next.length > 0) permissions[msg.sessionId] = next
       else delete permissions[msg.sessionId]
       return { ...state, permissions }
+    }
+    case 'activity': {
+      const list = state.activity[msg.sessionId] ?? []
+      const i = list.findIndex((a) => a.id === msg.item.id)
+      const next = i === -1 ? [...list, msg.item] : list.slice()
+      if (i !== -1) next[i] = msg.item
+      return { ...state, activity: { ...state.activity, [msg.sessionId]: next } }
+    }
+    case 'activity_clear': {
+      const activity = { ...state.activity }
+      delete activity[msg.sessionId]
+      return { ...state, activity }
     }
     case 'notify':
       return state

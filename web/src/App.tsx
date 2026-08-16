@@ -272,6 +272,7 @@ export function App() {
               session={s}
               entries={state.transcripts[s.id] ?? []}
               permissions={state.permissions[s.id] ?? []}
+              activity={state.activity[s.id] ?? []}
               index={i}
               expanded={expanded === s.id}
               connected={state.connected}
