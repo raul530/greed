@@ -1,17 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
   ActivityItem,
+  MsgAttachment,
   PermissionRequest,
   SessionMeta,
   TranscriptEntry,
 } from '../../../shared/types'
 import { api } from '../api'
-import { filesFromClipboard, shouldInline } from '../attachments'
+import { filesFromClipboard } from '../attachments'
 import { EFFORTS, MODELS, permShort } from '../models'
 import { ActivityRail } from './activity/ActivityRail'
 import { ActivityTree } from './activity/ActivityTree'
 import { useActivity } from './activity/useActivity'
+import {
+  filterCommands,
+  SlashMenu,
+  typedCommand,
+  useCommands,
+} from './commands/SlashMenu'
+import { PermissionDock } from './PermissionDock'
+import { PreviewPane } from './preview/PreviewPane'
+import { PreviewRail } from './preview/PreviewRail'
+import { usePreview } from './preview/usePreview'
 import { Transcript } from './Transcript'
+import { AttachChips, useAttachments } from './useAttachments'
+import { useDraft } from './useDraft'
 
 interface Props {
   session: SessionMeta
@@ -22,7 +35,9 @@ interface Props {
   expanded: boolean
   connected: boolean
   /** retorna true se a mensagem foi enviada (para o input só limpar no sucesso) */
-  onSend: (text: string) => boolean
+  onSend: (text: string, attachments: MsgAttachment[]) => boolean
+  /** /btw — pergunta de canto, vai pro console lateral e não entra no turno */
+  onBtw: (text: string) => void
   onInterrupt: () => void
   onClose: () => void
   onToggleExpand: () => void
@@ -34,85 +49,59 @@ interface Props {
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
-type Attachment =
-  | { id: string; name: string; state: 'uploading' }
-  | { id: string; name: string; state: 'inline'; content: string }
-  | { id: string; name: string; state: 'file'; path: string }
-  | { id: string; name: string; state: 'error'; message: string }
-
 function StatusDot({ status }: { status: SessionMeta['status'] }) {
   const label = status === 'working' ? 'trabalhando' : status === 'waiting' ? 'esperando você' : 'idle'
-  return <span className={`status-dot ${status}`} title={label} />
+  return <span className={`status-dot ${status}`} data-tip={label} />
 }
-
-const newId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random())
 
 export function SessionCard(props: Props) {
   const { session, entries, permissions, index, expanded, connected } = props
-  const [draft, setDraft] = useState('')
-  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const { draft, setDraft, stale, onBlur, clear: clearDraft } = useDraft(session.id)
   const [dragging, setDragging] = useState(false)
   const [treeOpen, setTreeOpen] = useState(false)
+  const [prevOpen, setPrevOpen] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
   const act = useActivity(props.activity)
+  const prev = usePreview(session.id, session.status)
   const rootRef = useRef<HTMLElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const att = useAttachments((file) => api.uploadAttachment(session.id, file))
+  const { addFiles, uploading, ready } = att
 
-  const uploading = attachments.some((a) => a.state === 'uploading')
-  const ready = attachments.filter((a) => a.state === 'inline' || a.state === 'file')
+  // menu de comandos: só busca a lista quando alguém realmente digita "/"
+  const typed = typedCommand(draft)
+  const cmd = useCommands(session.id, typed !== null)
+  const matches = typed === null ? [] : filterCommands(cmd.cmds, typed)
+  const menuOpen = typed !== null && (cmd.loading || matches.length > 0 || typed.length > 0)
+  const active = matches[Math.min(slashIndex, matches.length - 1)]
 
-  const addFiles = async (files: File[]) => {
-    for (const file of files) {
-      const id = newId()
-      if (shouldInline(file)) {
-        try {
-          const content = await file.text()
-          setAttachments((prev) => [...prev, { id, name: file.name, state: 'inline', content }])
-          // além do inline no contexto, persiste + indexa na base de conhecimento do projeto
-          void api.uploadAttachment(session.id, file).catch(() => {})
-        } catch {
-          setAttachments((prev) => [
-            ...prev,
-            { id, name: file.name, state: 'error', message: 'falha ao ler' },
-          ])
-        }
-      } else {
-        setAttachments((prev) => [...prev, { id, name: file.name, state: 'uploading' }])
-        try {
-          const { path } = await api.uploadAttachment(session.id, file)
-          setAttachments((prev) =>
-            prev.map((a) => (a.id === id ? { id, name: file.name, state: 'file', path } : a)),
-          )
-        } catch (err) {
-          setAttachments((prev) =>
-            prev.map((a) =>
-              a.id === id
-                ? { id, name: file.name, state: 'error', message: err instanceof Error ? err.message : 'falha' }
-                : a,
-            ),
-          )
-        }
-      }
-    }
+  const complete = (name: string) => {
+    setDraft(`/${name} `)
+    setSlashIndex(0)
   }
-
-  const removeAttachment = (id: string) =>
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
 
   const submit = () => {
     const text = draft.trim()
     if ((!text && ready.length === 0) || !connected || uploading) return
-    let composed = text
-    for (const a of ready) {
-      if (a.state === 'inline') {
-        composed += `${composed ? '\n\n' : ''}----- arquivo anexado: ${a.name} -----\n${a.content}\n----- fim: ${a.name} -----`
-      } else if (a.state === 'file') {
-        composed += `${composed ? '\n\n' : ''}[arquivo anexado salvo em ./${a.path} — abra com Read/Edit]`
-      }
+
+    // comandos que o Greed resolve sozinho — o resto desce pro Claude Code
+    const [head, ...rest] = text.split(/\s+/)
+    const arg = text.slice(head.length).trim()
+    if (head === '/btw') {
+      props.onBtw(arg)
+      clearDraft()
+      return
     }
-    if (props.onSend(composed)) {
-      setDraft('')
-      setAttachments([])
+    if (head === '/preview') {
+      setPrevOpen(true)
+      clearDraft()
+      return
+    }
+    void rest
+
+    if (props.onSend(text, att.payload())) {
+      clearDraft()
+      att.clear()
     }
   }
 
@@ -134,6 +123,7 @@ export function SessionCard(props: Props) {
     session.attention ? `attn-${session.attention}` : '',
     expanded ? 'expanded' : '',
     dragging ? 'dragging' : '',
+    stale ? 'draft' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -167,6 +157,17 @@ export function SessionCard(props: Props) {
           <div className="card-project">
             {session.projectName}
             {index < 9 && <kbd className="card-kbd">{index + 1}</kbd>}
+            {permissions.length > 0 && (
+              <span className="perm-badge" data-tip="Há pedido(s) de permissão esperando você">
+                🔐 decidir
+                {permissions.length > 1 ? ` ×${permissions.length}` : ''}
+              </span>
+            )}
+            {stale && (
+              <span className="draft-badge" data-tip="Mensagem escrita e não enviada — Enter manda">
+                ✎ não enviado
+              </span>
+            )}
             {session.codebasePath && (
               <span className="codebase-badge" title={session.codebasePath}>
                 ▸ {session.codebasePath.split('/').filter(Boolean).pop()}
@@ -181,7 +182,7 @@ export function SessionCard(props: Props) {
           <select
             className="model-select"
             value={session.model ?? ''}
-            title="Modelo desta sessão (vale a partir do próximo turno)"
+            data-tip="Modelo desta sessão (vale a partir do próximo turno)"
             onChange={(e) => props.onSetModel(e.target.value || null)}
           >
             {MODELS.map((m) => (
@@ -193,7 +194,7 @@ export function SessionCard(props: Props) {
           <select
             className="model-select effort-select"
             value={session.effort ?? ''}
-            title="Esforço de raciocínio (mais = mais consumo; vale no próximo turno)"
+            data-tip="Esforço de raciocínio (mais = mais consumo; vale no próximo turno)"
             onChange={(e) => props.onSetEffort(e.target.value || null)}
           >
             {EFFORTS.map((x) => (
@@ -204,7 +205,7 @@ export function SessionCard(props: Props) {
           </select>
           <button
             className={`perm-toggle ${session.permissionMode}`}
-            title={
+            data-tip={
               session.permissionMode === 'bypassPermissions'
                 ? 'Autônomo: roda tools sem pedir. Clique para voltar a perguntar.'
                 : 'Pede aprovação. Clique para rodar sem perguntar (autônomo).'
@@ -219,18 +220,18 @@ export function SessionCard(props: Props) {
           </button>
           <StatusDot status={session.status} />
           {session.status === 'working' && (
-            <button className="icon" title="Interromper turno" onClick={props.onInterrupt}>
+            <button className="icon" data-tip="Interromper o turno agora" onClick={props.onInterrupt}>
               ■
             </button>
           )}
           <button
             className="icon"
-            title={expanded ? 'Restaurar' : 'Expandir'}
+            data-tip={expanded ? 'Restaurar o tamanho do card' : 'Expandir o card na tela'}
             onClick={props.onToggleExpand}
           >
             {expanded ? '⤡' : '⤢'}
           </button>
-          <button className="icon" title="Fechar (vai para o histórico)" onClick={props.onClose}>
+          <button className="icon" data-tip="Fechar — o chat vai pro histórico" onClick={props.onClose}>
             ✕
           </button>
         </div>
@@ -238,12 +239,22 @@ export function SessionCard(props: Props) {
       <div className="card-body">
         <Transcript
           entries={entries}
-          permissions={permissions}
+          pending={permissions.length > 0}
           working={session.status === 'working'}
-          onPermission={props.onPermission}
         />
+        <PermissionDock permissions={permissions} onPermission={props.onPermission} />
         {treeOpen && <ActivityTree a={act} onClose={() => setTreeOpen(false)} />}
       </div>
+      <PreviewRail
+        files={prev.files}
+        open={prevOpen}
+        hidden={prev.hidden}
+        onToggle={() => setPrevOpen((v) => !v)}
+        onHide={() => {
+          prev.hide()
+          setPrevOpen(false)
+        }}
+      />
       <ActivityRail
         a={act}
         working={session.status === 'working'}
@@ -251,28 +262,20 @@ export function SessionCard(props: Props) {
         onToggle={() => setTreeOpen((v) => !v)}
       />
       <footer className="card-input">
-        {attachments.length > 0 && (
-          <div className="attach-chips">
-            {attachments.map((a) => (
-              <span key={a.id} className={`attach-chip ${a.state}`} title={a.name}>
-                <span className="attach-icon">
-                  {a.state === 'uploading' ? '⏳' : a.state === 'error' ? '⚠' : '📎'}
-                </span>
-                <span className="attach-name">{a.name}</span>
-                <span className="attach-kind">
-                  {a.state === 'inline' ? 'texto' : a.state === 'file' ? 'arquivo' : a.state === 'error' ? a.message : 'enviando…'}
-                </span>
-                <button className="attach-x" title="Remover" onClick={() => removeAttachment(a.id)}>
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
+        <AttachChips attachments={att.attachments} onRemove={att.remove} />
+        {menuOpen && (
+          <SlashMenu
+            cmds={matches}
+            loading={cmd.loading}
+            active={Math.min(slashIndex, Math.max(matches.length - 1, 0))}
+            onPick={(c) => complete(c.name)}
+            onHover={setSlashIndex}
+          />
         )}
         <div className="input-row">
           <button
             className="attach-btn"
-            title="Anexar arquivo (.md, texto, código, ou qualquer arquivo)"
+            data-tip="Anexar arquivo — ou cole (⌘V) e arraste pro card"
             onClick={() => fileRef.current?.click()}
           >
             📎
@@ -296,9 +299,13 @@ export function SessionCard(props: Props) {
                 ? 'Reconectando ao servidor…'
                 : session.status === 'waiting'
                   ? 'Responda o pedido de permissão acima…'
-                  : 'Mensagem… (Enter envia, 📎 ou arraste p/ anexar)'
+                  : 'Mensagem… (Enter envia, / para comandos, 📎 p/ anexar)'
             }
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setSlashIndex(0)
+            }}
+            onBlur={onBlur}
             onPaste={(e) => {
               // print/cópia de imagem colada com ctrl+v vira anexo
               const files = filesFromClipboard(e.clipboardData)
@@ -308,6 +315,30 @@ export function SessionCard(props: Props) {
               }
             }}
             onKeyDown={(e) => {
+              if (menuOpen && matches.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setSlashIndex((i) => (i + 1) % matches.length)
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSlashIndex((i) => (i - 1 + matches.length) % matches.length)
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setDraft('')
+                  return
+                }
+                // tab sempre completa; enter completa enquanto o nome não estiver fechado
+                const incomplete = active && active.name !== typed
+                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && incomplete)) {
+                  e.preventDefault()
+                  if (active) complete(active.name)
+                  return
+                }
+              }
               // não envia no meio de composição IME (acentos, CJK)
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
@@ -319,12 +350,29 @@ export function SessionCard(props: Props) {
             className="send"
             onClick={submit}
             disabled={(!draft.trim() && ready.length === 0) || !connected || uploading}
-            title={uploading ? 'Aguardando anexo…' : 'Enviar'}
+            data-tip={
+              uploading
+                ? 'Esperando o anexo subir…'
+                : stale
+                  ? 'Isso ainda não foi enviado — clique ou Enter'
+                  : 'Enviar (Enter)'
+            }
           >
             ➤
           </button>
         </div>
       </footer>
+      {/* o preview vira modal grande: o card é pequeno demais pra testar layout */}
+      {prevOpen && (
+        <PreviewPane
+          sessionId={session.id}
+          title={`${session.projectName} — ${session.title}`}
+          files={prev.files}
+          nonce={prev.nonce}
+          onReload={prev.reload}
+          onClose={() => setPrevOpen(false)}
+        />
+      )}
     </section>
   )
 }

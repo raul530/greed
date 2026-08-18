@@ -6,7 +6,12 @@ function isValidClientMsg(m: unknown): m is ClientMsg {
   const msg = m as Record<string, unknown>
   switch (msg.type) {
     case 'user_message':
-      return typeof msg.sessionId === 'string' && typeof msg.text === 'string'
+    case 'btw':
+      return (
+        typeof msg.sessionId === 'string' &&
+        typeof msg.text === 'string' &&
+        (msg.attachments === undefined || Array.isArray(msg.attachments))
+      )
     case 'permission_response':
       return (
         typeof msg.sessionId === 'string' &&
@@ -54,6 +59,11 @@ export class Hub {
       })
       this.connectHandler?.(ws)
     })
+  }
+
+  /** quantos navegadores estão ligados agora (poller de consumo só roda com plateia) */
+  clientCount(): number {
+    return this.clients.size
   }
 
   onMessage(handler: (msg: ClientMsg) => void): void {

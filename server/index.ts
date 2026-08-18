@@ -4,10 +4,15 @@ import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import { WebSocketServer } from 'ws'
+import type { MsgAttachment, UsageSnapshot } from '../shared/types'
+import { commandsFor } from './commands'
 import { Hub } from './hub'
+import { buildInsights } from './insights'
 import { SessionManager } from './manager'
+import { warmMemory } from './memory'
 import { ProjectRegistry } from './projects'
 import { store } from './store'
+import { fetchUsage, lastKnownUsage, POLL_MS, startUsagePoller } from './usage'
 
 const PORT = Number(process.env.GREED_PORT ?? 4517)
 
@@ -51,11 +56,30 @@ const wss = new WebSocketServer({
 const hub = new Hub(wss)
 const manager = new SessionManager(hub, projects)
 
-hub.onConnect((ws) => hub.sendTo(ws, manager.snapshot()))
+// Consumo da assinatura: o poller lê de tempos em tempos e empurra por WS.
+let lastUsage: { type: 'usage'; usage: UsageSnapshot | null; error: string | null } | null = null
+const usagePoller = startUsagePoller(
+  (usage, error) => {
+    lastUsage = { type: 'usage', usage, error }
+    hub.broadcast(lastUsage)
+  },
+  () => hub.clientCount() > 0,
+)
+
+hub.onConnect((ws) => {
+  hub.sendTo(ws, manager.snapshot())
+  hub.sendTo(ws, manager.fleetSnapshot())
+  // manda o que já temos pra tela não abrir vazia, e relê se estiver velho
+  if (lastUsage) hub.sendTo(ws, lastUsage)
+  if (!lastUsage?.usage || Date.now() - lastUsage.usage.fetchedAt > POLL_MS) usagePoller.poke()
+})
 hub.onMessage((msg) => {
   switch (msg.type) {
     case 'user_message':
-      manager.sendUserMessage(msg.sessionId, msg.text)
+      manager.sendUserMessage(msg.sessionId, msg.text, msg.attachments)
+      break
+    case 'btw':
+      manager.askBtw(msg.sessionId, msg.text)
       break
     case 'permission_response':
       manager.respondPermission(msg.sessionId, msg.requestId, msg.behavior)
@@ -80,6 +104,39 @@ hub.onMessage((msg) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
+})
+
+// De onde saiu o consumo: lê os transcripts locais e devolve os rankings.
+// Leitura é cacheada por mtime, então só arquivo mexido é reprocessado.
+app.get('/api/insights', async (req, res) => {
+  try {
+    const hours = Math.min(168, Math.max(1, Number(req.query.hours ?? 24) || 24))
+    const report = await buildInsights(manager.cardsBySdkSession(), hours * 60 * 60 * 1000)
+    res.json(report)
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// leitura sob demanda (botão "Atualizar"), fora do ritmo do poller
+app.get('/api/usage', async (_req, res) => {
+  try {
+    const usage = await fetchUsage()
+    lastUsage = { type: 'usage', usage, error: null }
+    hub.broadcast(lastUsage)
+    res.json(usage)
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    // taxa travada com leitura antiga na mão: devolve a antiga em vez de esvaziar a tela
+    const known = lastKnownUsage()
+    if (known) {
+      res.json(known)
+      return
+    }
+    lastUsage = { type: 'usage', usage: null, error }
+    hub.broadcast(lastUsage)
+    res.status(502).json({ error })
+  }
 })
 
 // Navegador de pastas (só dentro do home) para escolher a pasta/repo de um projeto.
@@ -125,14 +182,16 @@ app.delete('/api/projects/:id', (req, res) => {
 
 app.post('/api/sessions', (req, res) => {
   try {
-    const { projectId, prompt, model, effort, permissionMode, codebasePath } = (req.body ?? {}) as {
-      projectId?: string
-      prompt?: string
-      model?: string | null
-      effort?: string | null
-      permissionMode?: string
-      codebasePath?: string | null
-    }
+    const { projectId, prompt, model, effort, permissionMode, codebasePath, attachments } =
+      (req.body ?? {}) as {
+        projectId?: string
+        prompt?: string
+        model?: string | null
+        effort?: string | null
+        permissionMode?: string
+        codebasePath?: string | null
+        attachments?: MsgAttachment[]
+      }
     if (!prompt || !prompt.trim()) throw new Error('O primeiro prompt é obrigatório')
     const session = manager.createSession(
       String(projectId ?? ''),
@@ -141,6 +200,7 @@ app.post('/api/sessions', (req, res) => {
       effort ?? null,
       permissionMode,
       codebasePath ?? null,
+      Array.isArray(attachments) ? attachments : [],
     )
     res.json(session)
   } catch (err) {
@@ -160,23 +220,131 @@ app.post('/api/sessions/:id/reopen', (req, res) => {
 
 // Salva um anexo (bytes crus) dentro da pasta do projeto, em greed-anexos/.
 // Só é usado para arquivos grandes/binários; texto pequeno vai inline pelo cliente.
-app.post('/api/sessions/:id/attachments', express.raw({ type: '*/*', limit: '64mb' }), (req, res) => {
+function saveAttachment(
+  projectPath: string,
+  rawName: string,
+  body: unknown,
+): { name: string; rel: string; abs: string; bytes: Buffer } {
+  const safeName = path.basename(rawName).replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'arquivo'
+  if (!Buffer.isBuffer(body) || body.length === 0) throw new Error('Arquivo vazio')
+  const dir = path.join(projectPath, 'greed-anexos')
+  fs.mkdirSync(dir, { recursive: true })
+  const abs = path.join(dir, safeName)
+  fs.writeFileSync(abs, body)
+  return { name: safeName, rel: path.join('greed-anexos', safeName), abs, bytes: body }
+}
+
+const rawBody = express.raw({ type: '*/*', limit: '64mb' })
+
+app.post('/api/sessions/:id/attachments', rawBody, (req, res) => {
   try {
     const projectPath = manager.projectPathForSession(req.params.id)
     if (!projectPath) throw new Error('Sessão não encontrada')
-    const rawName = String(req.query.name ?? 'arquivo')
-    const safeName = path.basename(rawName).replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'arquivo'
-    const body = req.body as Buffer
-    if (!Buffer.isBuffer(body) || body.length === 0) throw new Error('Arquivo vazio')
-    const dir = path.join(projectPath, 'greed-anexos')
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, safeName), body)
-    const rel = path.join('greed-anexos', safeName)
-    manager.ingestAttachment(req.params.id, safeName, rel, body) // extrai + indexa (async)
-    res.json({ path: rel })
+    const f = saveAttachment(projectPath, String(req.query.name ?? 'arquivo'), req.body)
+    manager.ingestAttachment(req.params.id, f.name, f.rel, f.bytes) // extrai + indexa (async)
+    res.json({ path: f.rel, abs: f.abs })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
   }
+})
+
+// Mesma coisa, mas por projeto: usado pelo modal de novo chat, onde ainda não há sessão.
+app.post('/api/projects/:id/attachments', rawBody, (req, res) => {
+  try {
+    const project = projects.get(req.params.id)
+    if (!project) throw new Error('Projeto não encontrado')
+    const f = saveAttachment(project.path, String(req.query.name ?? 'arquivo'), req.body)
+    manager.ingestProjectAttachment(project.id, f.name, f.rel, f.bytes)
+    res.json({ path: f.rel, abs: f.abs })
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// ── preview: ver e baixar o que o agente escreveu, sem sair do card ──
+// Pastas que nunca interessam no preview (e que fariam a varredura custar caro).
+const PREVIEW_SKIP = new Set(['node_modules', '.git', '.next', 'coverage', 'venv', '_texto'])
+const PREVIEW_DEPTH = 3
+const PREVIEW_MAX = 40
+
+// Entregáveis: o que ele produz pra gente ver ou baixar. Fora daqui é código de
+// apoio (css/js), que o html referencia sozinho e não precisa aparecer na lista.
+const PREVIEW_EXT = /\.(html?|md|markdown|svg|pdf|csv|txt)$/i
+
+/** Lista os entregáveis da pasta de trabalho, mais recente primeiro. Varredura rasa e limitada. */
+function findFiles(root: string): { rel: string; mtime: number }[] {
+  const out: { rel: string; mtime: number }[] = []
+  const walk = (dir: string, depth: number) => {
+    if (depth > PREVIEW_DEPTH || out.length >= PREVIEW_MAX) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (out.length >= PREVIEW_MAX) return
+      if (e.name.startsWith('.') && e.name !== '.') continue
+      const abs = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        if (!PREVIEW_SKIP.has(e.name)) walk(abs, depth + 1)
+      } else if (PREVIEW_EXT.test(e.name)) {
+        try {
+          out.push({ rel: path.relative(root, abs), mtime: fs.statSync(abs).mtimeMs })
+        } catch {
+          // arquivo sumiu no meio da varredura
+        }
+      }
+    }
+  }
+  walk(root, 0)
+  return out.sort((a, b) => b.mtime - a.mtime)
+}
+
+// lista de slash commands válidos nesta pasta (Claude Code + os do Greed)
+app.get('/api/sessions/:id/commands', async (req, res) => {
+  const cwd = manager.previewRootForSession(req.params.id)
+  if (!cwd) {
+    res.status(404).json({ error: 'Sessão não encontrada' })
+    return
+  }
+  res.json({ commands: await commandsFor(cwd), btw: manager.btwHistory(req.params.id) })
+})
+
+app.get('/api/sessions/:id/preview', (req, res) => {
+  const root = manager.previewRootForSession(req.params.id)
+  if (!root) {
+    res.status(404).json({ error: 'Sessão não encontrada' })
+    return
+  }
+  res.json({ files: findFiles(root) })
+})
+
+// Serve os arquivos da pasta de trabalho (html + css/js/imagens que ele referencia).
+// Só localhost (guarda global) e só dentro da raiz — nada de subir com "..".
+app.get('/preview/:id/*', (req, res) => {
+  const root = manager.previewRootForSession(req.params.id)
+  if (!root) {
+    res.status(404).send('sessão não encontrada')
+    return
+  }
+  const rel = decodeURIComponent(String((req.params as Record<string, string>)[0] ?? ''))
+  let real: string
+  let realRoot: string
+  try {
+    realRoot = fs.realpathSync(root)
+    real = fs.realpathSync(path.resolve(root, rel)) // resolve ".." e link simbólico
+  } catch {
+    res.status(404).send('arquivo não encontrado')
+    return
+  }
+  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+    res.status(403).send('fora da pasta da sessão')
+    return
+  }
+  // ?download=1 faz o navegador salvar em vez de abrir
+  if (req.query.download) res.download(real)
+  else res.sendFile(real)
 })
 
 if (process.env.GREED_SERVE_STATIC) {
@@ -187,12 +355,15 @@ if (process.env.GREED_SERVE_STATIC) {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[greed] server rodando em http://localhost:${PORT}`)
+  // migra a memória para o OptMem e adianta as compressões, antes de qualquer sessão
+  warmMemory(projects.list().map((p) => p.id))
 })
 
 let closing = false
 function shutdown(code = 0): void {
   if (closing) return
   closing = true
+  usagePoller.stop()
   manager.shutdown()
   store.flush()
   process.exit(code)

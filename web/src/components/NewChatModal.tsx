@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
+import { filesFromClipboard } from '../attachments'
 import { EFFORTS, MODELS, PERMISSION_MODES } from '../models'
 import { FolderPicker } from './FolderPicker'
+import { AttachChips, useAttachments } from './useAttachments'
 
 const PERM_KEY = 'greed:permMode'
 const codebaseKey = (projectId: string) => `greed:codebase:${projectId}`
@@ -29,12 +31,18 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => taRef.current?.focus(), [])
 
   // resolve na hora: cobre projetos que chegam depois do mount ou id que sumiu
   const effectiveId = projects.some((p) => p.id === projectId) ? projectId : (projects[0]?.id ?? '')
+
+  // anexo é salvo na pasta do projeto escolhido — sessão ainda não existe
+  const att = useAttachments((file) => api.uploadProjectAttachment(effectiveId, file))
+  const { addFiles } = att
 
   // ao trocar de projeto, recupera o último codebase usado nele
   useEffect(() => {
@@ -46,8 +54,16 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     }
   }, [effectiveId])
 
+  // anexos já foram gravados na pasta do projeto anterior; não valem pro novo
+  useEffect(() => {
+    att.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveId])
+
+  const canSubmit = Boolean(effectiveId) && !!prompt.trim() && !busy && !att.uploading
+
   const submit = async () => {
-    if (!effectiveId || !prompt.trim() || busy) return
+    if (!canSubmit) return
     setBusy(true)
     setError(null)
     try {
@@ -57,7 +73,15 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
       } catch {
         // localStorage indisponível — só não persiste a preferência
       }
-      await api.newSession(effectiveId, prompt, model || null, effort || null, permMode, codebase || null)
+      await api.newSession(
+        effectiveId,
+        prompt.trim(),
+        model || null,
+        effort || null,
+        permMode,
+        codebase || null,
+        att.payload(),
+      )
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -67,7 +91,25 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div
+        className={`modal${dragging ? ' dragging' : ''}`}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault()
+            setDragging(true)
+          }
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setDragging(false)
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files.length > 0) {
+            e.preventDefault()
+            setDragging(false)
+            void addFiles([...e.dataTransfer.files])
+          }
+        }}
+      >
         <h2>Novo chat</h2>
         {projects.length === 0 ? (
           <div className="modal-empty">
@@ -98,7 +140,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                   Procurar…
                 </button>
                 {codebase && (
-                  <button type="button" className="icon" title="Limpar" onClick={() => setCodebase('')}>
+                  <button type="button" className="icon" data-tip="Limpar — volta a usar a pasta do projeto" onClick={() => setCodebase('')}>
                     ✕
                   </button>
                 )}
@@ -143,29 +185,54 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
             </p>
             <label>
               Primeiro prompt
-              <textarea
-                ref={taRef}
-                rows={5}
-                value={prompt}
-                placeholder="O que essa sessão deve fazer?"
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault()
-                    void submit()
-                  }
-                }}
-              />
+              <AttachChips attachments={att.attachments} onRemove={att.remove} />
+              <div className="prompt-row">
+                <textarea
+                  ref={taRef}
+                  rows={5}
+                  value={prompt}
+                  placeholder="O que essa sessão deve fazer? (📎, ctrl+v ou arraste p/ anexar)"
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onPaste={(e) => {
+                    // print/cópia de imagem colada com ctrl+v vira anexo
+                    const files = filesFromClipboard(e.clipboardData)
+                    if (files.length > 0) {
+                      e.preventDefault()
+                      void addFiles(files)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault()
+                      void submit()
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="attach-btn"
+                  data-tip="Anexar arquivo — ou cole (⌘V) e arraste pro modal"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  📎
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files) void addFiles([...e.target.files])
+                    e.target.value = ''
+                  }}
+                />
+              </div>
             </label>
             {error && <div className="modal-error">{error}</div>}
             <div className="modal-actions">
               <button onClick={onClose}>Cancelar</button>
-              <button
-                className="primary"
-                disabled={!effectiveId || !prompt.trim() || busy}
-                onClick={() => void submit()}
-              >
-                {busy ? 'Abrindo…' : 'Iniciar (⌘⏎)'}
+              <button className="primary" disabled={!canSubmit} onClick={() => void submit()}>
+                {busy ? 'Abrindo…' : att.uploading ? 'Anexando…' : 'Iniciar (⌘⏎)'}
               </button>
             </div>
           </>

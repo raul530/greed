@@ -63,6 +63,13 @@ export const store = {
     pendingTranscripts.set(sessionId, entries)
     scheduleFlush()
   },
+  /** cache genérico em data/<name>.json (lista de comandos, por exemplo) */
+  read<T>(name: string, fallback: T): T {
+    return readJson<T>(path.join(DATA_DIR, `${name}.json`), fallback)
+  },
+  write(name: string, value: unknown): void {
+    writeJson(path.join(DATA_DIR, `${name}.json`), value)
+  },
   flush(): void {
     if (flushTimer) {
       clearTimeout(flushTimer)

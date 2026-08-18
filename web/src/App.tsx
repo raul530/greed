@@ -1,17 +1,29 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, ServerMsg } from '../../shared/types'
 import { api } from './api'
+import { BtwConsole } from './components/BtwConsole'
+import { FleetView } from './components/fleet/FleetView'
 import { HistoryPanel } from './components/HistoryPanel'
 import { NewChatModal } from './components/NewChatModal'
 import { ProjectFilter } from './components/ProjectFilter'
 import { ProjectsModal } from './components/ProjectsModal'
 import { SessionCard } from './components/SessionCard'
+import { TooltipLayer } from './components/Tooltip'
+import { UsageView } from './components/UsageView'
 import { initialState, reducer } from './store'
 import { connectWS, type WSHandle } from './ws'
 
 const HIDDEN_KEY = 'greed:hiddenProjects'
 const THEME_KEY = 'greed:theme'
 const THEMES = ['orange', 'purple', 'green'] as const
+
+/** telas da HUD — o board é a de sempre; as outras entram aqui */
+const VIEWS = [
+  { id: 'board', label: 'Board' },
+  { id: 'fleet', label: 'Agentes' },
+  { id: 'usage', label: 'Consumo' },
+] as const
+type View = (typeof VIEWS)[number]['id']
 
 function loadHidden(): Set<string> {
   try {
@@ -38,7 +50,10 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const wsRef = useRef<WSHandle | null>(null)
   const [modal, setModal] = useState<'none' | 'new' | 'projects'>('none')
+  const [view, setView] = useState<View>('board')
   const [historyOpen, setHistoryOpen] = useState(false)
+  /** sessão cujo console de /btw está aberto (um por vez) */
+  const [btwSession, setBtwSession] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hiddenProjects, setHiddenProjects] = useState<Set<string>>(loadHidden)
   const [theme, setTheme] = useState<string>(() => {
@@ -111,6 +126,15 @@ export function App() {
     return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [openSessions])
 
+  // maior limite em uso — fica sempre à vista na telemetria do topo
+  const usagePeak = useMemo(
+    () =>
+      state.usage && state.usage.limits.length > 0
+        ? Math.max(...state.usage.limits.map((l) => l.percent))
+        : null,
+    [state.usage],
+  )
+
   const visibleSessions = useMemo(
     () => openSessions.filter((s) => !hiddenProjects.has(s.projectId)),
     [openSessions, hiddenProjects],
@@ -158,6 +182,7 @@ export function App() {
         }
         if (e.key.toLowerCase() === 'k') {
           e.preventDefault()
+          setView('board') // o card novo nasce no board
           setModal('new')
           return
         }
@@ -196,19 +221,43 @@ export function App() {
               {state.connected ? 'live' : 'offline'}
             </span>
           </div>
+          <nav className="hud-nav" aria-label="Telas">
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                className={`navtab ${view === v.id ? 'active' : ''}`}
+                aria-current={view === v.id}
+                onClick={() => setView(v.id)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </nav>
           <div className="telemetry">
             <span className="tcell">
               <i>sessions</i>
               <b>{openSessions.length + closedSessions.length}</b>
             </span>
-            <span className="tcell">
+            <button
+              className="tcell tcell-btn"
+              onClick={() => setView('fleet')}
+              title="Ver os agentes trabalhando"
+            >
               <i>in-flight</i>
               <b>{openSessions.filter((s) => s.status === 'working').length}</b>
-            </span>
+            </button>
             <span className="tcell">
               <i>open</i>
               <b>{openSessions.length}</b>
             </span>
+            <button
+              className={`tcell tcell-btn ${usagePeak != null && usagePeak >= 90 ? 'hot' : ''}`}
+              onClick={() => setView('usage')}
+              title="Consumo da assinatura"
+            >
+              <i>limite</i>
+              <b>{usagePeak == null ? '—' : `${usagePeak}%`}</b>
+            </button>
           </div>
         </div>
         <div className="topbar-actions">
@@ -228,7 +277,7 @@ export function App() {
               🔔 Ativar notificações
             </button>
           )}
-          {projectsOnBoard.length > 1 && (
+          {view === 'board' && projectsOnBoard.length > 1 && (
             <ProjectFilter
               projects={projectsOnBoard}
               hidden={hiddenProjects}
@@ -239,13 +288,31 @@ export function App() {
           <button onClick={() => setHistoryOpen(true)}>
             Histórico{closedSessions.length > 0 ? ` (${closedSessions.length})` : ''}
           </button>
-          <button className="primary" onClick={() => setModal('new')}>
+          <button
+            className="primary"
+            onClick={() => {
+              setView('board')
+              setModal('new')
+            }}
+          >
             + Novo chat <kbd>⌘K</kbd>
           </button>
         </div>
       </header>
 
-      {openSessions.length === 0 ? (
+      {view === 'usage' ? (
+        <UsageView usage={state.usage} error={state.usageError} />
+      ) : view === 'fleet' ? (
+        <FleetView
+          sessions={state.sessions}
+          runs={state.fleetRuns}
+          spans={state.fleetSpans}
+          onOpen={(id) => {
+            setView('board')
+            requestAnimationFrame(() => focusCard(id))
+          }}
+        />
+      ) : openSessions.length === 0 ? (
         <div className="empty-state">
           <div className="empty-logo" aria-hidden="true" />
           <p>Nenhum chat aberto.</p>
@@ -276,7 +343,13 @@ export function App() {
               index={i}
               expanded={expanded === s.id}
               connected={state.connected}
-              onSend={(text) => send({ type: 'user_message', sessionId: s.id, text })}
+              onSend={(text, attachments) =>
+                send({ type: 'user_message', sessionId: s.id, text, attachments })
+              }
+              onBtw={(text) => {
+                setBtwSession(s.id)
+                if (text) send({ type: 'btw', sessionId: s.id, text })
+              }}
               onInterrupt={() => send({ type: 'interrupt', sessionId: s.id })}
               onClose={() => {
                 if (expandedId === s.id) setExpandedId(null)
@@ -325,9 +398,19 @@ export function App() {
           onReopen={(id) => {
             call(api.reopenSession(id))
             setHistoryOpen(false)
+            setView('board')
           }}
         />
       )}
+      {btwSession && state.sessions[btwSession] && (
+        <BtwConsole
+          title={`${state.sessions[btwSession].projectName} — ${state.sessions[btwSession].title}`}
+          exchanges={state.btw[btwSession] ?? []}
+          onAsk={(text) => send({ type: 'btw', sessionId: btwSession, text })}
+          onClose={() => setBtwSession(null)}
+        />
+      )}
+      <TooltipLayer />
     </div>
   )
 }
