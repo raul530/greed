@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { ask } from './ask'
 import { extractText } from './extract'
 import { now, truncate, uid } from './util'
 
@@ -64,39 +63,15 @@ const sha256 = (b: Buffer): string => createHash('sha256').update(b).digest('hex
 
 /** Gera uma descrição curta do documento via Haiku (barato). '' em qualquer falha. */
 async function describe(name: string, format: string, sample: string): Promise<string> {
-  const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), 30_000)
-  try {
-    const q = query({
-      prompt:
-        'Descreva em UMA linha curta (máximo 15 palavras, no mesmo idioma do conteúdo, sem aspas e ' +
-        'sem ponto final) o que é este documento, para um catálogo de acervo. Responda SÓ a descrição.\n\n' +
-        `Nome: ${name} (${format})\nTrecho:\n${truncate(sample, 2000)}`,
-      options: {
-        cwd: os.tmpdir(),
-        model: 'haiku',
-        maxTurns: 1,
-        tools: [],
-        settingSources: [],
-        systemPrompt: 'Você descreve documentos em uma linha para um catálogo. Responda apenas a descrição.',
-        persistSession: false,
-        abortController: abort,
-        env: { ...process.env, ANTHROPIC_API_KEY: undefined },
-      },
-    })
-    for await (const msg of q) {
-      if (msg.type === 'result') {
-        if (msg.subtype !== 'success') return ''
-        const desc = msg.result.trim().replace(/^["'“”]+|["'“”.]+$/g, '')
-        return desc ? truncate(desc, 160) : ''
-      }
-    }
-    return ''
-  } catch {
-    return ''
-  } finally {
-    clearTimeout(timer)
-  }
+  const result = await ask(
+    'Você descreve documentos em uma linha para um catálogo. Responda apenas a descrição.',
+    'Descreva em UMA linha curta (máximo 15 palavras, no mesmo idioma do conteúdo, sem aspas e ' +
+      'sem ponto final) o que é este documento, para um catálogo de acervo. Responda SÓ a descrição.\n\n' +
+      `Nome: ${name} (${format})\nTrecho:\n${truncate(sample, 2000)}`,
+  )
+  if (!result) return ''
+  const desc = result.trim().replace(/^["\'\u201c\u201d]+|["\'\u201c\u201d.]+$/g, '')
+  return desc ? truncate(desc, 160) : ''
 }
 
 /** Regenera o índice completo (sem cap) em greed-anexos/INDEX.md — alvo de grep/leitura sob demanda. */
@@ -130,6 +105,8 @@ export function ingestDoc(input: {
   name: string
   relPath: string
   bytes: Buffer
+  /** chamado quando o documento entrou mesmo na base (ignora duplicata) */
+  onSaved?: (doc: { name: string; ok: boolean }) => void
 }): void {
   void enqueue(input.projectId, async () => {
     const hash = sha256(input.bytes)
@@ -169,6 +146,7 @@ export function ingestDoc(input: {
     const trimmed = docs.length > MAX_DOCS ? docs.slice(docs.length - MAX_DOCS) : docs
     save(input.projectId, trimmed)
     writeIndexMd(input.projectPath, input.projectName, trimmed)
+    input.onSaved?.({ name: input.name, ok: textRelPath !== null })
   })
 }
 

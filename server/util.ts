@@ -36,6 +36,20 @@ export function summarizeToolInput(toolName: string, input: unknown): string {
   }
 }
 
+/**
+ * O alvo concreto de uma tool: caminho, padrão, url ou comando.
+ * Diferente do resumo, vem sem o nome do campo — serve pra agrupar por arquivo tocado.
+ */
+export function toolTarget(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const obj = input as Record<string, unknown>
+  for (const key of ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'command', 'query']) {
+    const v = obj[key]
+    if (typeof v === 'string' && v.trim()) return truncate(v, 160)
+  }
+  return undefined
+}
+
 /** Expande tokens ${VAR} e ${VAR:-default} a partir do ambiente (formato do .mcp.json do Claude Code). */
 export function expandEnvVars(value: string): string {
   return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_m, name: string, def?: string) => {

@@ -1,20 +1,32 @@
 import { useEffect, useRef } from 'react'
-import type { PermissionRequest, TranscriptEntry } from '../../../shared/types'
+import type { TranscriptEntry } from '../../../shared/types'
 import { Markdown } from './Markdown'
-
-function formatInput(input: unknown): string {
-  try {
-    const text = typeof input === 'string' ? input : JSON.stringify(input, null, 2)
-    return text.length > 1500 ? `${text.slice(0, 1500)}\n…` : text
-  } catch {
-    return String(input)
-  }
-}
 
 function Entry({ entry }: { entry: TranscriptEntry }) {
   switch (entry.kind) {
     case 'user':
-      return <div className="msg-user">{entry.text}</div>
+      return (
+        <div className="msg-user">
+          {entry.text}
+          {entry.attachments && entry.attachments.length > 0 && (
+            <div className="msg-files">
+              {entry.attachments.map((a) => (
+                <span
+                  key={a.name}
+                  className="msg-file"
+                  data-tip={
+                    a.kind === 'inline'
+                      ? 'Conteúdo foi junto no prompt (não ocupa a tela)'
+                      : 'Salvo na pasta do projeto — ele abre com Read'
+                  }
+                >
+                  📎 {a.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )
     case 'assistant':
       return (
         <div className="msg-assistant">
@@ -49,6 +61,14 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
     }
     case 'info':
       return <div className="info-line">{entry.text}</div>
+    case 'memory':
+      return (
+        <div className="memory-line" data-src={entry.source}>
+          <span className="memory-mark">🧠</span>
+          <span>memória atualizada</span>
+          <span className="memory-what">{entry.text}</span>
+        </div>
+      )
     case 'error':
       return <div className="error-line">{entry.text}</div>
     default:
@@ -58,12 +78,12 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
 
 interface Props {
   entries: TranscriptEntry[]
-  permissions: PermissionRequest[]
+  /** há pedido de permissão aberto — o painel dele vive no PermissionDock */
+  pending: boolean
   working: boolean
-  onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
 }
 
-export function Transcript({ entries, permissions, working, onPermission }: Props) {
+export function Transcript({ entries, pending, working }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   const stick = useRef(true)
 
@@ -83,29 +103,13 @@ export function Transcript({ entries, permissions, working, onPermission }: Prop
       {entries.map((e) => (
         <Entry key={e.id} entry={e} />
       ))}
-      {working && permissions.length === 0 && (
+      {working && !pending && (
         <div className="thinking" aria-label="trabalhando">
           <span />
           <span />
           <span />
         </div>
       )}
-      {permissions.map((permission) => (
-        <div className="perm-panel" key={permission.id}>
-          <div className="perm-head">
-            🔐 Pedido de permissão: <b>{permission.toolName}</b>
-          </div>
-          <pre className="perm-body">{formatInput(permission.input)}</pre>
-          <div className="perm-actions">
-            <button className="allow" onClick={() => onPermission(permission.id, 'allow')}>
-              Permitir
-            </button>
-            <button className="deny" onClick={() => onPermission(permission.id, 'deny')}>
-              Negar
-            </button>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }

@@ -1,10 +1,14 @@
 import type {
   ActivityItem,
+  BtwExchange,
+  FleetRun,
+  FleetSpan,
   PermissionRequest,
   Project,
   ServerMsg,
   SessionMeta,
   TranscriptEntry,
+  UsageSnapshot,
 } from '../../shared/types'
 
 export interface ClientState {
@@ -16,6 +20,14 @@ export interface ClientState {
   permissions: Record<string, PermissionRequest[]>
   /** árvore de atividade viva por sessão (efêmera) */
   activity: Record<string, ActivityItem[]>
+  /** perguntas de canto (/btw) por sessão */
+  btw: Record<string, BtwExchange[]>
+  /** diário de bordo da frota: turnos e trechos de trabalho recentes, por chave */
+  fleetRuns: Record<string, FleetRun>
+  fleetSpans: Record<string, FleetSpan>
+  /** consumo da assinatura (null enquanto não chegou a 1ª leitura) */
+  usage: UsageSnapshot | null
+  usageError: string | null
 }
 
 export const initialState: ClientState = {
@@ -25,6 +37,25 @@ export const initialState: ClientState = {
   transcripts: {},
   permissions: {},
   activity: {},
+  btw: {},
+  fleetRuns: {},
+  fleetSpans: {},
+  usage: null,
+  usageError: null,
+}
+
+/** o log da frota é infinito no servidor só até a janela; aqui a poda evita crescer sem fim */
+const SPAN_CAP = 2200
+const SPAN_KEEP = 1400
+const RUN_CAP = 300
+const RUN_KEEP = 180
+
+function capRecord<T>(rows: Record<string, T>, cap: number, keep: number, at: (v: T) => number) {
+  if (Object.keys(rows).length <= cap) return rows
+  const newest = Object.entries(rows)
+    .sort((a, b) => at(b[1]) - at(a[1]))
+    .slice(0, keep)
+  return Object.fromEntries(newest) as Record<string, T>
 }
 
 export type Action = { type: 'ws_status'; connected: boolean } | { type: 'server'; msg: ServerMsg }
@@ -110,11 +141,36 @@ export function reducer(state: ClientState, action: Action): ClientState {
       if (i !== -1) next[i] = msg.item
       return { ...state, activity: { ...state.activity, [msg.sessionId]: next } }
     }
+    case 'btw': {
+      const list = state.btw[msg.exchange.sessionId] ?? []
+      const i = list.findIndex((b) => b.id === msg.exchange.id)
+      const next = i === -1 ? [...list, msg.exchange] : list.slice()
+      if (i !== -1) next[i] = msg.exchange
+      return { ...state, btw: { ...state.btw, [msg.exchange.sessionId]: next } }
+    }
+    case 'fleet_snapshot': {
+      const fleetRuns: Record<string, FleetRun> = {}
+      for (const r of msg.fleet.runs) fleetRuns[r.id] = r
+      const fleetSpans: Record<string, FleetSpan> = {}
+      for (const sp of msg.fleet.spans) fleetSpans[sp.key] = sp
+      return { ...state, fleetRuns, fleetSpans }
+    }
+    case 'fleet_run': {
+      const runs = { ...state.fleetRuns, [msg.run.id]: msg.run }
+      return { ...state, fleetRuns: capRecord(runs, RUN_CAP, RUN_KEEP, (r) => r.startedAt) }
+    }
+    case 'fleet_span': {
+      const spans = { ...state.fleetSpans, [msg.span.key]: msg.span }
+      return { ...state, fleetSpans: capRecord(spans, SPAN_CAP, SPAN_KEEP, (sp) => sp.startedAt) }
+    }
     case 'activity_clear': {
       const activity = { ...state.activity }
       delete activity[msg.sessionId]
       return { ...state, activity }
     }
+    case 'usage':
+      // erro sem leitura nova mantém o último snapshot na tela (marcado como velho)
+      return { ...state, usage: msg.usage ?? state.usage, usageError: msg.error }
     case 'notify':
       return state
     default:

@@ -33,7 +33,7 @@ export function ActivityTree({ a, onClose }: Props) {
     <div className="act-tree">
       <div className="act-tree-head">
         <span>atividade</span>
-        <button className="icon" onClick={onClose} title="Fechar">
+        <button className="icon" onClick={onClose} data-tip="Fechar (esc)">
           ✕
         </button>
       </div>

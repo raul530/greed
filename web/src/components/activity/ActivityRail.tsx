@@ -13,7 +13,7 @@ export function ActivityRail({ a, working, open, onToggle }: Props) {
   const head = activityHeadline(a, working)
   const live = a.running.length > 0
   return (
-    <button className={`act-rail ${open ? 'open' : ''}`} onClick={onToggle} title="Ver atividade">
+    <button className={`act-rail ${open ? 'open' : ''}`} onClick={onToggle} data-tip="Ver o que rodou neste turno">
       {live ? <span className="act-spin" /> : <span className="act-rail-dot" />}
       <span className="act-rail-head">{head || '…'}</span>
       <span className="act-rail-counts">

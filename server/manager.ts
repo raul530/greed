@@ -13,21 +13,42 @@ import {
 import type {
   ActivityItem,
   ActivityStatus,
+  BtwExchange,
+  FleetSnapshot,
+  MsgAttachment,
   PermissionRequest,
   ServerMsg,
   SessionMeta,
   TranscriptEntry,
 } from '../shared/types'
+import { askBtw } from './btw'
+import { rememberFrom } from './commands'
 import { ingestDoc, renderDocCatalog } from './docs'
+import { FleetLog } from './fleet'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
-import { captureTurn, renderMemory } from './memory'
+import { captureTurn, memoryTools, renderMemory } from './memory'
 import type { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fallbackTitle, generateTitle } from './titles'
-import { now, summarizeToolInput, truncate, uid } from './util'
+import { now, summarizeToolInput, toolTarget, truncate, uid } from './util'
+
+/** Monta o que o modelo recebe: o texto do usuário + os anexos, nesta ordem. */
+function composeForModel(text: string, attachments: MsgAttachment[]): string {
+  let out = text
+  for (const a of attachments) {
+    if (a.content != null) {
+      out += `${out ? '\n\n' : ''}----- arquivo anexado: ${a.name} -----\n${a.content}\n----- fim: ${a.name} -----`
+    } else if (a.path) {
+      out += `${out ? '\n\n' : ''}[arquivo anexado salvo em ${a.path} — abra com Read/Edit]`
+    }
+  }
+  return out
+}
 
 const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
+/** quantas perguntas de canto ficam guardadas por sessão */
+const BTW_KEEP = 30
 function normalizePermMode(mode?: string): string {
   return mode && PERM_MODES.has(mode) ? mode : 'default'
 }
@@ -101,8 +122,12 @@ export class SessionManager {
   private sessions = new Map<string, SessionMeta>()
   private transcripts = new Map<string, TranscriptEntry[]>()
   private live = new Map<string, LiveSession>()
+  /** perguntas de canto (/btw) por sessão — vivem só nesta execução do servidor */
+  private btw = new Map<string, BtwExchange[]>()
   /** sessões cujo query() foi encerrado mas ainda está drenando (janela de graça antes do abort) */
   private ending = new Map<string, { live: LiveSession; timer: NodeJS.Timeout }>()
+  /** diário de bordo da frota: sobrevive ao fim do turno, ao contrário da árvore de atividade */
+  private fleet = new FleetLog((msg) => this.hub.broadcast(msg))
 
   constructor(
     private hub: Hub,
@@ -141,6 +166,20 @@ export class SessionManager {
     }
   }
 
+  /** estado da tela de Agentes pra quem acabou de conectar */
+  fleetSnapshot(): { type: 'fleet_snapshot'; fleet: FleetSnapshot } {
+    return { type: 'fleet_snapshot', fleet: this.fleet.snapshot() }
+  }
+
+  /** id de sessão do SDK → o card do Greed, pra dar nome ao consumo dos transcripts */
+  cardsBySdkSession(): Map<string, { title: string; projectName: string }> {
+    const out = new Map<string, { title: string; projectName: string }>()
+    for (const s of this.sessions.values()) {
+      if (s.sdkSessionId) out.set(s.sdkSessionId, { title: s.title, projectName: s.projectName })
+    }
+    return out
+  }
+
   createSession(
     projectId: string,
     prompt: string,
@@ -148,6 +187,7 @@ export class SessionManager {
     effort?: string | null,
     permissionMode?: string,
     codebasePath?: string | null,
+    attachments: MsgAttachment[] = [],
   ): SessionMeta {
     const project = this.projects.get(projectId)
     if (!project) throw new Error('Projeto não encontrado')
@@ -172,7 +212,7 @@ export class SessionManager {
     this.sessions.set(session.id, session)
     this.save()
     this.hub.broadcast({ type: 'session', session })
-    this.sendUserMessage(session.id, prompt)
+    this.sendUserMessage(session.id, prompt, attachments)
     void generateTitle(prompt).then((title) => {
       if (!title) return
       const s = this.sessions.get(session.id)
@@ -181,20 +221,36 @@ export class SessionManager {
     return session
   }
 
-  sendUserMessage(sessionId: string, text: string): void {
+  sendUserMessage(sessionId: string, text: string, attachments: MsgAttachment[] = []): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
     const clean = text.trim()
-    if (!clean) return
-    this.addEntry(sessionId, { kind: 'user', id: uid(), text: clean, ts: now() })
+    if (!clean && attachments.length === 0) return
+    // o balão guarda só o que você escreveu; o conteúdo do anexo vai pro modelo
+    this.addEntry(sessionId, {
+      kind: 'user',
+      id: uid(),
+      text: clean,
+      ts: now(),
+      ...(attachments.length > 0
+        ? {
+            attachments: attachments.map((a) => ({
+              name: a.name,
+              kind: a.content != null ? ('inline' as const) : ('file' as const),
+            })),
+          }
+        : {}),
+    })
+    const forModel = composeForModel(clean, attachments)
     const existing = this.live.get(sessionId)
     if (existing) this.clearActivity(sessionId, existing) // árvore limpa no novo turno
+    this.fleet.startRun(sessionId) // o log da frota, ao contrário, começa um capítulo novo
     const live = existing ?? this.startLive(session)
     if (!live) return
     live.turnSeq += 1
     live.queue.push({
       type: 'user',
-      message: { role: 'user', content: clean },
+      message: { role: 'user', content: forModel },
       parent_tool_use_id: null,
     })
     // não rebaixa de 'waiting' se ainda há permissão pendente
@@ -235,20 +291,86 @@ export class SessionManager {
     return this.projects.get(session.projectId)?.path ?? null
   }
 
+  /** /btw: pergunta paralela, em processo próprio — o turno em andamento nem sente. */
+  askBtw(sessionId: string, text: string): void {
+    const session = this.sessions.get(sessionId)
+    const cwd = this.previewRootForSession(sessionId)
+    const question = text.trim()
+    if (!session || !cwd || !question) return
+
+    const exchange: BtwExchange = {
+      id: uid(),
+      sessionId,
+      question,
+      answer: '',
+      status: 'asking',
+      ts: now(),
+    }
+    const history = this.btw.get(sessionId) ?? []
+    history.push(exchange)
+    this.btw.set(sessionId, history.slice(-BTW_KEEP))
+    this.hub.broadcast({ type: 'btw', exchange })
+
+    void askBtw(session, cwd, this.transcript(sessionId), history.slice(0, -1), question)
+      .then((answer) => {
+        exchange.answer = answer
+        exchange.status = 'done'
+      })
+      .catch((err: unknown) => {
+        exchange.answer = err instanceof Error ? err.message : String(err)
+        exchange.status = 'error'
+      })
+      .finally(() => this.hub.broadcast({ type: 'btw', exchange }))
+  }
+
+  /** linha discreta no transcript: a base de conhecimento do projeto mudou. */
+  private noteMemory(sessionId: string, text: string, source: 'doc' | 'facts'): void {
+    if (!this.sessions.has(sessionId)) return
+    this.addEntry(sessionId, { kind: 'memory', id: uid(), text, source, ts: now() })
+  }
+
+  btwHistory(sessionId: string): BtwExchange[] {
+    return this.btw.get(sessionId) ?? []
+  }
+
+  /** raiz do preview: a mesma pasta onde o agente escreve (codebase ou projeto). */
+  previewRootForSession(sessionId: string): string | null {
+    const session = this.sessions.get(sessionId)
+    if (!session) return null
+    return session.codebasePath ?? this.projects.get(session.projectId)?.path ?? null
+  }
+
   /** ingesta um anexo salvo na base de conhecimento do projeto (extrai texto + indexa). */
   ingestAttachment(sessionId: string, name: string, relPath: string, bytes: Buffer): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
-    const project = this.projects.get(session.projectId)
+    this.ingestProjectAttachment(session.projectId, name, relPath, bytes, sessionId)
+  }
+
+  /** mesma ingestão, sem sessão: anexo colado no modal antes do chat existir. */
+  ingestProjectAttachment(
+    projectId: string,
+    name: string,
+    relPath: string,
+    bytes: Buffer,
+    sessionId = '',
+  ): void {
+    const project = this.projects.get(projectId)
     if (!project) return
     ingestDoc({
-      projectId: session.projectId,
-      projectName: session.projectName,
+      projectId,
+      projectName: project.name,
       projectPath: project.path,
       sessionId,
       name,
       relPath,
       bytes,
+      onSaved: ({ name: docName, ok }) =>
+        this.noteMemory(
+          sessionId,
+          ok ? `${docName} indexado na base do projeto` : `${docName} salvo (sem texto extraído)`,
+          'doc',
+        ),
     })
   }
 
@@ -372,6 +494,7 @@ export class SessionManager {
   private pushActivity(sessionId: string, live: LiveSession, item: ActivityItem): void {
     live.activity.set(item.id, item)
     this.hub.broadcast({ type: 'activity', sessionId, item })
+    this.fleet.track(sessionId, item)
   }
 
   private updateActivity(
@@ -387,7 +510,9 @@ export class SessionManager {
           id,
           parentId: null,
           kind: 'tool',
-          name: patch.name ?? id,
+          // o evento que criou este item chegou sem nome (ex.: progresso de algo que
+          // começou antes); id cru na tela não diz nada a ninguém
+          name: patch.name ?? 'trabalho',
           detail: '',
           status: 'running',
           ts: now(),
@@ -396,6 +521,7 @@ export class SessionManager {
         }
     live.activity.set(id, item)
     this.hub.broadcast({ type: 'activity', sessionId, item })
+    this.fleet.track(sessionId, item)
   }
 
   private clearActivity(sessionId: string, live: LiveSession): void {
@@ -449,9 +575,14 @@ export class SessionManager {
     const abort = new AbortController()
     // cwd = codebase (onde o agente edita/commita) ou a própria pasta do projeto
     const cwd = session.codebasePath ?? project.path
-    const mcpServers = session.codebasePath
-      ? { ...loadProjectMcpServers(project.path), ...loadProjectMcpServers(session.codebasePath) }
-      : loadProjectMcpServers(project.path)
+    const mcpServers = {
+      ...(session.codebasePath
+        ? { ...loadProjectMcpServers(project.path), ...loadProjectMcpServers(session.codebasePath) }
+        : loadProjectMcpServers(project.path)),
+      // recall/zoom sobre a memória OptMem do projeto: o contexto injetado é uma
+      // cobertura comprimida, e estas tools são como o agente desce no detalhe
+      greed_memory: memoryTools(session.projectId),
+    }
     // memória de fatos + catálogo de documentos do projeto, reinjetados no system prompt
     const projectMemory = renderMemory(session.projectId, session.projectName)
     const docCatalog = renderDocCatalog(session.projectId, session.projectName, project.path)
@@ -514,6 +645,8 @@ export class SessionManager {
       activity: new Map(),
     }
     this.live.set(session.id, live)
+    // aproveita a sessão viva pra manter a lista de comandos desta pasta em dia
+    rememberFrom(cwd, q)
     void this.runLoop(session.id, live)
     return live
   }
@@ -548,6 +681,8 @@ export class SessionManager {
       }
       if (isCurrent) {
         this.live.delete(sessionId)
+        // um query que morre sem `result` deixaria o turno aberto pra sempre no log
+        this.fleet.dropSession(sessionId)
         const session = this.sessions.get(sessionId)
         if (session && session.status !== 'idle') this.touch(session, { status: 'idle' })
       }
@@ -599,9 +734,12 @@ export class SessionManager {
           case 'task_progress':
             if (m.task_id) {
               this.updateActivity(sessionId, live, m.task_id, {
+                kind: m.subagent_type ? 'subagent' : 'task',
+                ...(m.tool_use_id ? { parentId: m.tool_use_id } : {}),
                 status: 'running',
                 detail: m.summary ?? m.description ?? '',
-                ...(m.last_tool_name ? { name: m.last_tool_name } : {}),
+                ...(m.subagent_type ? { name: m.subagent_type } : {}),
+                ...(m.last_tool_name ? { tool: m.last_tool_name } : {}),
                 ...(m.usage?.total_tokens != null ? { tokens: m.usage.total_tokens } : {}),
                 ...(m.usage?.tool_uses != null ? { toolUses: m.usage.tool_uses } : {}),
                 ...(m.usage?.duration_ms != null ? { elapsedMs: m.usage.duration_ms } : {}),
@@ -728,32 +866,36 @@ export class SessionManager {
       }
 
       case 'assistant': {
-        if (msg.parent_tool_use_id) break
-        let text = ''
-        for (const block of msg.message.content) {
-          if (block.type === 'text') text += (text ? '\n\n' : '') + block.text
-        }
-        if (live.currentAssistantId) {
-          const entryId = live.currentAssistantId
-          live.currentAssistantId = null
-          const t = this.transcript(sessionId)
-          const cur = t.find((e) => e.id === entryId)
-          const finalText = text || (cur?.kind === 'assistant' ? cur.text : '')
-          this.replaceEntry(sessionId, {
-            kind: 'assistant',
-            id: entryId,
-            text: finalText,
-            ts: now(),
-            streaming: false,
-          })
-        } else if (text) {
-          this.addEntry(sessionId, { kind: 'assistant', id: uid(), text, ts: now() })
+        // mensagem de subagente: o texto dele não vai pro transcript, mas as tools
+        // que ele chama alimentam a árvore de atividade e a tela de Agentes
+        const nested = Boolean(msg.parent_tool_use_id)
+        if (!nested) {
+          let text = ''
+          for (const block of msg.message.content) {
+            if (block.type === 'text') text += (text ? '\n\n' : '') + block.text
+          }
+          if (live.currentAssistantId) {
+            const entryId = live.currentAssistantId
+            live.currentAssistantId = null
+            const t = this.transcript(sessionId)
+            const cur = t.find((e) => e.id === entryId)
+            const finalText = text || (cur?.kind === 'assistant' ? cur.text : '')
+            this.replaceEntry(sessionId, {
+              kind: 'assistant',
+              id: entryId,
+              text: finalText,
+              ts: now(),
+              streaming: false,
+            })
+          } else if (text) {
+            this.addEntry(sessionId, { kind: 'assistant', id: uid(), text, ts: now() })
+          }
         }
         for (const block of msg.message.content) {
           if (block.type === 'tool_use') {
             const summary = summarizeToolInput(block.name, block.input)
             // tools de topo entram no log; subagentes só na árvore de atividade
-            if (!msg.parent_tool_use_id) {
+            if (!nested) {
               this.addEntry(sessionId, {
                 kind: 'tool',
                 id: block.id, // mantém o id do bloco p/ correlacionar o tool_result
@@ -763,6 +905,7 @@ export class SessionManager {
                 ts: now(),
               })
             }
+            const target = toolTarget(block.input)
             this.pushActivity(sessionId, live, {
               id: block.id,
               parentId: msg.parent_tool_use_id ?? null,
@@ -770,12 +913,13 @@ export class SessionManager {
               name: block.name,
               detail: summary,
               status: 'running',
+              ...(target ? { target } : {}),
               ts: now(),
               updatedAt: now(),
             })
           }
         }
-        if (msg.error) {
+        if (msg.error && !nested) {
           this.addEntry(sessionId, {
             kind: 'error',
             id: uid(),
@@ -795,6 +939,7 @@ export class SessionManager {
           }
         }
         this.clearActivity(sessionId, live)
+        this.fleet.endRun(sessionId, msg.subtype === 'success' ? 'ok' : 'error')
         if (msg.subtype !== 'success') {
           const detail =
             'errors' in msg && Array.isArray(msg.errors) && msg.errors.length > 0
@@ -839,6 +984,12 @@ export class SessionManager {
     const live = this.live.get(sessionId)
     if (!session || !live) {
       return Promise.resolve({ behavior: 'deny', message: 'Sessão não está ativa no Greed.' })
+    }
+    // ler a própria memória do projeto não é uma ação que valha um pedido de
+    // permissão: é local, somente leitura, e é o Greed lendo o que ele mesmo
+    // escreveu. Perguntar aqui só treinaria o usuário a clicar "permitir".
+    if (toolName.startsWith('mcp__greed_memory__')) {
+      return Promise.resolve({ behavior: 'allow', updatedInput: input })
     }
     const request: PermissionRequest = {
       id: uid(),
@@ -970,6 +1121,12 @@ export class SessionManager {
       sessionId: session.id,
       userText: userEntry.text,
       assistantText,
+      onSaved: (count) =>
+        this.noteMemory(
+          session.id,
+          `${count} fato${count > 1 ? 's' : ''} novo${count > 1 ? 's' : ''} na memória do projeto`,
+          'facts',
+        ),
     })
   }
 
