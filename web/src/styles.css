@@ -458,7 +458,8 @@ kbd {
   display: flex;
   flex-direction: column;
   height: min(46vh, 520px);
-  min-height: 340px;
+  min-height: 260px;
+  resize: both;
   background: var(--card);
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
@@ -474,7 +475,33 @@ kbd {
   z-index: 50;
   height: auto;
   min-height: 0;
+  resize: none;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+}
+
+.card::-webkit-resizer {
+  background: transparent;
+}
+
+.card-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--edge) 45% 58%,
+    transparent 58% 70%,
+    var(--edge) 70% 83%,
+    transparent 83%
+  );
+}
+
+.card.expanded .card-grip {
+  display: none;
 }
 
 .expand-backdrop {
@@ -3041,6 +3068,10 @@ kbd {
 @media (max-width: 920px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .grid > .card {
+    grid-column: 1 / -1 !important;
   }
 
   .usage {

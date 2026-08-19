@@ -28,6 +28,7 @@ then open http://localhost:5173.
 - documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
 - per chat: pick model (explicit version), reasoning effort, and permission mode (ask, or autonomous by default).
 - attachments: paperclip or drag and drop.
+- resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
 - themes: orange, purple, green.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
