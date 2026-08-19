@@ -12,7 +12,7 @@ auth is your claude subscription via the existing claude code login. it never as
 
 ## run
 
-needs node 18+ and claude code installed and logged in (`claude login`).
+needs node 18+ and claude code installed and logged in (`claude login`). there is an `.nvmrc` pinned to node 22, so `nvm use` picks the version this was built on.
 
 ```bash
 npm install
