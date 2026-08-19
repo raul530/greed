@@ -2,6 +2,7 @@
 
 :root {
   /* tema padrão: blueprint laranja */
+  color-scheme: dark;
   --primary-rgb: 255, 122, 24;
   --glow-rgb: 255, 154, 60;
   --bg: #0b0906;
@@ -69,6 +70,66 @@
   --muted: #85a061;
   --alert-rgb: 255, 204, 51;
   --alert: #ffcc33;
+}
+
+/* claros: mesma planta, tinta sobre papel. o realce é mais escuro que o primário,
+   não mais claro, senão some no fundo */
+
+/* tema: papel pardo (sépia) */
+:root[data-theme='paper'] {
+  color-scheme: light;
+  --primary-rgb: 141, 90, 30;
+  --glow-rgb: 99, 61, 18;
+  --bg: #d7d1b0;
+  --panel: #ded8bb;
+  --card: #dcd6b7;
+  --card-head: #d1caa6;
+  --sunk: #c9c29d;
+  --primary: #8d5a1e;
+  --glow: #633d12;
+  --edge: #a89f78;
+  --text: #33301f;
+  --muted: #6c6547;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
+}
+
+/* tema: sálvia (papel esverdeado) */
+:root[data-theme='sage'] {
+  color-scheme: light;
+  --primary-rgb: 61, 106, 45;
+  --glow-rgb: 40, 74, 28;
+  --bg: #dce2d2;
+  --panel: #e3e8db;
+  --card: #e1e6d9;
+  --card-head: #d4dbc8;
+  --sunk: #ccd4bf;
+  --primary: #3d6a2d;
+  --glow: #284a1c;
+  --edge: #9fae8e;
+  --text: #23301d;
+  --muted: #5c6d51;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
+}
+
+/* tema: lilás (papel azulado) */
+:root[data-theme='lilac'] {
+  color-scheme: light;
+  --primary-rgb: 88, 66, 160;
+  --glow-rgb: 63, 46, 120;
+  --bg: #dcd8e7;
+  --panel: #e4e1ef;
+  --card: #e2dfec;
+  --card-head: #d5d1e3;
+  --sunk: #cdc8de;
+  --primary: #5842a0;
+  --glow: #3f2e78;
+  --edge: #a49bc4;
+  --text: #262138;
+  --muted: #605878;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
 }
 
 * {
@@ -382,6 +443,32 @@ kbd {
 
 .swatch.green {
   background: #aee06c;
+}
+
+/* claros: o quadradinho mostra o papel, a borda mostra a tinta */
+.swatch.paper {
+  background: #d7d1b0;
+  border-color: #8d5a1e;
+}
+
+.swatch.sage {
+  background: #dce2d2;
+  border-color: #3d6a2d;
+}
+
+.swatch.lilac {
+  background: #dcd8e7;
+  border-color: #5842a0;
+}
+
+.swatch.group-start {
+  margin-left: 7px;
+}
+
+.theme-mode {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 /* ── filtro de projetos ─────────────────────────────── */

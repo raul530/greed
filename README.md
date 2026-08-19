@@ -28,7 +28,7 @@ then open http://localhost:5173.
 - documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
 - per chat: pick model (explicit version), reasoning effort, and permission mode (ask, or autonomous by default).
 - attachments: paperclip or drag and drop.
-- themes: orange, purple, green.
+- themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each, then let ◐ follow the os and switch between them on its own.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
 ## memory
