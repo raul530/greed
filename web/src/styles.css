@@ -2215,6 +2215,26 @@ kbd {
   padding: 0;
 }
 
+.inline-edit {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--sunk);
+  border: 1px solid var(--primary);
+  border-radius: var(--r);
+  padding: 4px 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+}
+
+.inline-edit.card-title-edit {
+  font-size: 11px;
+  padding: 1px 4px;
+  margin-top: 2px;
+}
+
 .project-list li {
   display: flex;
   align-items: center;
@@ -2365,9 +2385,16 @@ kbd {
   padding: 16px;
 }
 
+.drawer ul li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .history-item {
   display: block;
   width: 100%;
+  min-width: 0;
   text-align: left;
   background: transparent;
   border: 1px solid transparent;

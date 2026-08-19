@@ -90,6 +90,9 @@ hub.onMessage((msg) => {
     case 'mark_read':
       manager.markRead(msg.sessionId)
       break
+    case 'set_title':
+      manager.renameSession(msg.sessionId, msg.title)
+      break
     case 'set_model':
       manager.setModel(msg.sessionId, msg.model)
       break
@@ -167,6 +170,18 @@ app.post('/api/projects', (req, res) => {
   try {
     const { name, path: dir } = (req.body ?? {}) as { name?: string; path?: string }
     const project = projects.add(String(name ?? ''), String(dir ?? ''))
+    hub.broadcast({ type: 'projects', projects: projects.list() })
+    res.json(project)
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.patch('/api/projects/:id', (req, res) => {
+  try {
+    const { name } = (req.body ?? {}) as { name?: string }
+    const project = projects.rename(req.params.id, String(name ?? ''))
+    manager.renameProject(project.id, project.name)
     hub.broadcast({ type: 'projects', projects: projects.list() })
     res.json(project)
   } catch (err) {
