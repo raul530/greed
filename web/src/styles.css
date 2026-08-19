@@ -664,6 +664,38 @@ kbd {
   }
 }
 
+/* claros: luz desfocada atrás do card viraria mancha suja, porque a tinta é
+   escura. A moldura engrossa em vez de acender. */
+:root[data-scheme='light'] .card.attn-finished {
+  box-shadow:
+    0 0 0 1px var(--primary) inset,
+    0 0 0 4px rgba(var(--primary-rgb), 0.16);
+}
+
+:root[data-scheme='light'] .card.waiting {
+  box-shadow:
+    0 0 0 1px var(--alert) inset,
+    0 0 0 4px rgba(var(--alert-rgb), 0.16);
+}
+
+:root[data-scheme='light'] .card.attn-waiting {
+  animation-name: waitpulse-light;
+}
+
+@keyframes waitpulse-light {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--alert) inset,
+      0 0 0 3px rgba(var(--alert-rgb), 0.14);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px var(--alert) inset,
+      0 0 0 7px rgba(var(--alert-rgb), 0.26);
+  }
+}
+
 /* selo no topo do card: diz o que está travado, não só que algo está */
 .perm-badge {
   display: inline-flex;

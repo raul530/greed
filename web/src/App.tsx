@@ -104,12 +104,13 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', activeTheme)
+    document.documentElement.setAttribute('data-scheme', scheme)
     try {
       localStorage.setItem(THEME_KEY, JSON.stringify(theme))
     } catch {
       // localStorage indisponível — tema só não persiste
     }
-  }, [theme, activeTheme])
+  }, [theme, activeTheme, scheme])
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   )
