@@ -28,6 +28,9 @@
      Hue distinto do tema, para não competir com working/finished. */
   --alert-rgb: 255, 47, 77;
   --alert: #ff2f4d;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --vignette: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(4, 3, 1, 0.72);
   --hatch: repeating-linear-gradient(45deg, transparent 0 3px, var(--fill-mid) 3px 4px);
 
   /* altura da barra do preview, usada pra fechar o palco em 16:9 */
@@ -78,6 +81,9 @@
 /* tema: papel pardo (sépia) */
 :root[data-theme='paper'] {
   color-scheme: light;
+  --shadow: rgba(51, 48, 31, 0.14);
+  --vignette: rgba(51, 48, 31, 0.05);
+  --scrim: rgba(51, 48, 31, 0.28);
   --primary-rgb: 141, 90, 30;
   --glow-rgb: 99, 61, 18;
   --bg: #d7d1b0;
@@ -97,6 +103,9 @@
 /* tema: sálvia (papel esverdeado) */
 :root[data-theme='sage'] {
   color-scheme: light;
+  --shadow: rgba(35, 48, 29, 0.14);
+  --vignette: rgba(35, 48, 29, 0.05);
+  --scrim: rgba(35, 48, 29, 0.28);
   --primary-rgb: 61, 106, 45;
   --glow-rgb: 40, 74, 28;
   --bg: #dce2d2;
@@ -116,6 +125,9 @@
 /* tema: lilás (papel azulado) */
 :root[data-theme='lilac'] {
   color-scheme: light;
+  --shadow: rgba(38, 33, 56, 0.14);
+  --vignette: rgba(38, 33, 56, 0.05);
+  --scrim: rgba(38, 33, 56, 0.28);
   --primary-rgb: 88, 66, 160;
   --glow-rgb: 63, 46, 120;
   --bg: #dcd8e7;
@@ -149,7 +161,7 @@ body {
   -webkit-font-smoothing: antialiased;
   background-color: var(--bg);
   background-image:
-    radial-gradient(130% 130% at 50% -10%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(130% 130% at 50% -10%, transparent 55%, var(--vignette) 100%),
     linear-gradient(var(--fill-faint) 1px, transparent 1px),
     linear-gradient(90deg, var(--fill-faint) 1px, transparent 1px);
   background-size:
@@ -493,7 +505,7 @@ kbd {
   border: 1px solid var(--primary);
   border-radius: var(--r);
   padding: 5px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 40px var(--shadow);
 }
 
 .filter-item {
@@ -561,14 +573,14 @@ kbd {
   z-index: 50;
   height: auto;
   min-height: 0;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 80px var(--shadow);
 }
 
 .expand-backdrop {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(4, 3, 1, 0.72);
+  background: var(--scrim);
 }
 
 /* working: scanline varrendo o módulo */
@@ -1422,7 +1434,7 @@ kbd {
   background: var(--panel);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 80px var(--shadow);
   overflow: hidden;
 }
 
@@ -1672,7 +1684,7 @@ kbd {
   background: var(--panel);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 18px 60px var(--shadow);
   overflow: hidden;
 }
 
@@ -1803,7 +1815,7 @@ kbd {
   background: var(--sunk);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 20px var(--shadow);
   color: var(--text);
   font: 10px/1.35 var(--mono);
   letter-spacing: 0.04em;
@@ -2125,7 +2137,7 @@ kbd {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(4, 3, 1, 0.72);
+  background: var(--scrim);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2138,7 +2150,7 @@ kbd {
   border: 1px solid var(--primary);
   border-radius: var(--r);
   padding: 20px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 80px var(--shadow);
 }
 
 .modal h2 {
@@ -2196,7 +2208,7 @@ kbd {
 .modal.dragging {
   box-shadow:
     0 0 0 1px var(--primary) inset,
-    0 24px 80px rgba(0, 0, 0, 0.6);
+    0 24px 80px var(--shadow);
 }
 
 .prompt-row {
@@ -2406,7 +2418,7 @@ kbd {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(4, 3, 1, 0.6);
+  background: var(--scrim);
 }
 
 .drawer {
@@ -2420,7 +2432,7 @@ kbd {
   border-left: 1px solid var(--primary);
   display: flex;
   flex-direction: column;
-  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.5);
+  box-shadow: -16px 0 48px var(--shadow);
 }
 
 .drawer header {
