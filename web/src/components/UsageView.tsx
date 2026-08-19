@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { UsageLimit, UsageSample, UsageSnapshot } from '../../../shared/types'
+import type { Profile, UsageLimit, UsageSample, UsageSnapshot } from '../../../shared/types'
 import { api } from '../api'
 import { UsageInsights } from './UsageInsights'
 
 interface Props {
   usage: UsageSnapshot | null
   error: string | null
+  profiles: Profile[]
+  defaultProfile: string | null
 }
+
+/** de quanto em quanto tempo a conta não-padrão é relida (o padrão vem pelo WS) */
+const ALT_POLL_MS = 30_000
 
 /** quantos blocos o medidor tem — cada bloco vale 2,5% */
 const SEGMENTS = 40
@@ -462,10 +467,21 @@ function History({
   )
 }
 
-export function UsageView({ usage, error }: Props) {
+export function UsageView({ usage: wsUsage, error: wsError, profiles, defaultProfile }: Props) {
   const [now, setNow] = useState(() => Date.now())
   const [busy, setBusy] = useState(false)
   const [range, setRange] = useState<RangeId>('6h')
+  /** conta sendo olhada; null = a padrão, que chega pelo WS */
+  const [account, setAccount] = useState<string | null>(null)
+  /** incrementa pra forçar uma releitura da conta não-padrão (botão Atualizar) */
+  const [altTick, setAltTick] = useState(0)
+  const [alt, setAlt] = useState<{ usage: UsageSnapshot | null; error: string | null }>({
+    usage: null,
+    error: null,
+  })
+  const usage = account ? alt.usage : wsUsage
+  const error = account ? alt.error : wsError
+  const defaultDir = defaultProfile ?? profiles[0]?.dir
   /** limite com o quadro de detalhe por hora aberto (um por vez) */
   const [openLimit, setOpenLimit] = useState<string | null>(null)
   // limite sumiu da resposta (mudança de plano, etc.): o quadro fecha sozinho
@@ -477,8 +493,39 @@ export function UsageView({ usage, error }: Props) {
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    if (!account) return
+    let gone = false
+    const load = () => {
+      api
+        .refreshUsage(account)
+        .then((u) => {
+          if (!gone) setAlt({ usage: u, error: null })
+        })
+        .catch((err: unknown) => {
+          if (!gone) {
+            const message = err instanceof Error ? err.message : String(err)
+            setAlt((prev) => ({ usage: prev.usage, error: message }))
+          }
+        })
+        .finally(() => {
+          if (!gone) setBusy(false)
+        })
+    }
+    load()
+    const t = setInterval(load, ALT_POLL_MS)
+    return () => {
+      gone = true
+      clearInterval(t)
+    }
+  }, [account, altTick])
+
   const refresh = () => {
     setBusy(true)
+    if (account) {
+      setAltTick((t) => t + 1)
+      return
+    }
     api.refreshUsage().catch(() => {
       // o erro volta pelo WS e aparece na faixa de aviso
     }).finally(() => setBusy(false))
@@ -503,6 +550,23 @@ export function UsageView({ usage, error }: Props) {
         <header className="usage-head">
           <h2>Consumo da assinatura</h2>
           <div className="usage-head-right">
+            {profiles.length > 1 && (
+              <div className="range-pick">
+                {profiles.map((p) => (
+                  <button
+                    key={p.dir}
+                    className={(account ?? defaultDir) === p.dir ? 'active' : ''}
+                    title={p.dir}
+                    onClick={() => {
+                      setAlt({ usage: null, error: null })
+                      setAccount(p.dir === defaultDir ? null : p.dir)
+                    }}
+                  >
+                    @{p.name}
+                  </button>
+                ))}
+              </div>
+            )}
             {usage && <span className="usage-when">lido {ago(usage.fetchedAt, now)}</span>}
             <button onClick={refresh} disabled={busy}>
               {busy ? 'lendo…' : 'Atualizar'}
