@@ -81,21 +81,21 @@
 /* tema: papel pardo (sépia) */
 :root[data-theme='paper'] {
   color-scheme: light;
-  --shadow: rgba(51, 48, 31, 0.14);
-  --vignette: rgba(51, 48, 31, 0.05);
-  --scrim: rgba(51, 48, 31, 0.28);
-  --primary-rgb: 141, 90, 30;
-  --glow-rgb: 99, 61, 18;
-  --bg: #d7d1b0;
-  --panel: #ded8bb;
-  --card: #dcd6b7;
-  --card-head: #d1caa6;
-  --sunk: #c9c29d;
-  --primary: #8d5a1e;
-  --glow: #633d12;
-  --edge: #a89f78;
-  --text: #33301f;
-  --muted: #6c6547;
+  --shadow: rgba(58, 56, 44, 0.13);
+  --vignette: rgba(58, 56, 44, 0.04);
+  --scrim: rgba(58, 56, 44, 0.26);
+  --primary-rgb: 150, 96, 31;
+  --glow-rgb: 109, 69, 21;
+  --bg: #f1ecd8;
+  --panel: #f7f3e3;
+  --card: #f6f2e2;
+  --card-head: #e9e3cb;
+  --sunk: #e6e0c6;
+  --primary: #96601f;
+  --glow: #6d4515;
+  --edge: #cbc2a0;
+  --text: #3a382c;
+  --muted: #7a7460;
   --alert-rgb: 176, 42, 34;
   --alert: #b02a22;
 }
@@ -103,21 +103,21 @@
 /* tema: sálvia (papel esverdeado) */
 :root[data-theme='sage'] {
   color-scheme: light;
-  --shadow: rgba(35, 48, 29, 0.14);
-  --vignette: rgba(35, 48, 29, 0.05);
-  --scrim: rgba(35, 48, 29, 0.28);
-  --primary-rgb: 61, 106, 45;
-  --glow-rgb: 40, 74, 28;
-  --bg: #dce2d2;
-  --panel: #e3e8db;
-  --card: #e1e6d9;
-  --card-head: #d4dbc8;
-  --sunk: #ccd4bf;
-  --primary: #3d6a2d;
-  --glow: #284a1c;
-  --edge: #9fae8e;
-  --text: #23301d;
-  --muted: #5c6d51;
+  --shadow: rgba(43, 54, 38, 0.13);
+  --vignette: rgba(43, 54, 38, 0.04);
+  --scrim: rgba(43, 54, 38, 0.26);
+  --primary-rgb: 67, 113, 47;
+  --glow-rgb: 45, 82, 32;
+  --bg: #e9efdf;
+  --panel: #f1f5ea;
+  --card: #eff4e8;
+  --card-head: #e1e8d4;
+  --sunk: #dde5cf;
+  --primary: #43712f;
+  --glow: #2d5220;
+  --edge: #b9c7a8;
+  --text: #2b3626;
+  --muted: #667559;
   --alert-rgb: 176, 42, 34;
   --alert: #b02a22;
 }
@@ -125,21 +125,21 @@
 /* tema: lilás (papel azulado) */
 :root[data-theme='lilac'] {
   color-scheme: light;
-  --shadow: rgba(38, 33, 56, 0.14);
-  --vignette: rgba(38, 33, 56, 0.05);
-  --scrim: rgba(38, 33, 56, 0.28);
-  --primary-rgb: 88, 66, 160;
-  --glow-rgb: 63, 46, 120;
-  --bg: #dcd8e7;
-  --panel: #e4e1ef;
-  --card: #e2dfec;
-  --card-head: #d5d1e3;
-  --sunk: #cdc8de;
-  --primary: #5842a0;
-  --glow: #3f2e78;
-  --edge: #a49bc4;
-  --text: #262138;
-  --muted: #605878;
+  --shadow: rgba(43, 38, 64, 0.13);
+  --vignette: rgba(43, 38, 64, 0.04);
+  --scrim: rgba(43, 38, 64, 0.26);
+  --primary-rgb: 95, 72, 171;
+  --glow-rgb: 69, 51, 138;
+  --bg: #e7e4f0;
+  --panel: #f0eef7;
+  --card: #eeecf5;
+  --card-head: #ddd9ea;
+  --sunk: #d9d5e6;
+  --primary: #5f48ab;
+  --glow: #45338a;
+  --edge: #bcb5d2;
+  --text: #2b2640;
+  --muted: #6a6285;
   --alert-rgb: 176, 42, 34;
   --alert: #b02a22;
 }
@@ -459,17 +459,17 @@ kbd {
 
 /* claros: o quadradinho mostra o papel, a borda mostra a tinta */
 .swatch.paper {
-  background: #d7d1b0;
+  background: #f1ecd8;
   border-color: #8d5a1e;
 }
 
 .swatch.sage {
-  background: #dce2d2;
+  background: #e9efdf;
   border-color: #3d6a2d;
 }
 
 .swatch.lilac {
-  background: #dcd8e7;
+  background: #e7e4f0;
   border-color: #5842a0;
 }
 
