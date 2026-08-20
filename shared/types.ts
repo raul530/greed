@@ -7,6 +7,13 @@ export interface Project {
   createdAt: number
 }
 
+/** Uma conta Claude: pasta de config (~/.claude*) que vai em CLAUDE_CONFIG_DIR. */
+export interface Profile {
+  dir: string
+  /** nome curto pra UI: 'padrão' para ~/.claude, o sufixo para ~/.claude-<nome> */
+  name: string
+}
+
 export type CardStatus = 'idle' | 'working' | 'waiting'
 export type Attention = 'finished' | 'waiting' | null
 
@@ -24,6 +31,8 @@ export interface SessionMeta {
   permissionMode: string
   /** pasta do código onde o agente trabalha; null = usa a pasta do projeto (contexto) */
   codebasePath: string | null
+  /** pasta de config do Claude (CLAUDE_CONFIG_DIR) — qual conta paga esta sessão; null = perfil padrão */
+  profile: string | null
   open: boolean
   status: CardStatus
   attention: Attention
@@ -236,6 +245,7 @@ export type ClientMsg =
   | { type: 'mark_read'; sessionId: string }
   | { type: 'set_model'; sessionId: string; model: string | null }
   | { type: 'set_effort'; sessionId: string; effort: string | null }
+  | { type: 'set_profile'; sessionId: string; profile: string | null }
   | { type: 'set_permission_mode'; sessionId: string; mode: string }
 
 export type ServerMsg =

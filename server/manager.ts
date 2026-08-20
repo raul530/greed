@@ -28,6 +28,7 @@ import { FleetLog } from './fleet'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
 import { captureTurn, memoryTools, renderMemory } from './memory'
+import { envForProfile } from './profiles'
 import type { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fallbackTitle, generateTitle } from './titles'
@@ -140,6 +141,7 @@ export class SessionManager {
       s.effort = s.effort ?? null
       s.permissionMode = s.permissionMode ?? 'default'
       s.codebasePath = s.codebasePath ?? null
+      s.profile = s.profile ?? null
       this.sessions.set(s.id, s)
     }
   }
@@ -187,6 +189,7 @@ export class SessionManager {
     effort?: string | null,
     permissionMode?: string,
     codebasePath?: string | null,
+    profile?: string | null,
     attachments: MsgAttachment[] = [],
   ): SessionMeta {
     const project = this.projects.get(projectId)
@@ -202,6 +205,7 @@ export class SessionManager {
       // default do app: não pedir permissão (autônomo)
       permissionMode: normalizePermMode(permissionMode ?? 'bypassPermissions'),
       codebasePath: normalizeCodebase(codebasePath),
+      profile: profile && profile.trim() ? profile.trim() : null,
       open: true,
       status: 'idle',
       attention: null,
@@ -394,6 +398,23 @@ export class SessionManager {
     const live = this.live.get(sessionId)
     // aplica ao vivo (escopo da sessão); vale a partir do próximo turno
     if (live) void live.q.applyFlagSettings({ effortLevel: next as EffortLevel | null }).catch(() => {})
+  }
+
+  /**
+   * Troca a conta (CLAUDE_CONFIG_DIR) de uma sessão. Env só muda no spawn, então
+   * o processo vivo é encerrado de leve e o próximo turno renasce com o novo env,
+   * retomando o contexto pelo resume. Com turno rodando (ou permissão pendente)
+   * a troca é recusada — a UI desabilita o seletor nesses estados.
+   */
+  setProfile(sessionId: string, profile: string | null): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const next = profile && profile.trim() ? profile.trim() : null
+    if (session.profile === next) return
+    const live = this.live.get(sessionId)
+    if (live && (session.status !== 'idle' || live.pending.size > 0)) return
+    this.touch(session, { profile: next })
+    if (live) this.endLive(sessionId)
   }
 
   setPermissionMode(sessionId: string, mode: string): void {
@@ -622,8 +643,7 @@ export class SessionManager {
         // resumo humano do que cada subagente está fazendo (custo mínimo)
         agentProgressSummaries: true,
         abortController: abort,
-        // garante auth pela assinatura (login do Claude Code), nunca por API key
-        env: { ...process.env, ANTHROPIC_API_KEY: undefined },
+        env: envForProfile(session.profile),
         stderr: (data: string) => {
           if (process.env.GREED_DEBUG) console.error(`[sdk ${session.id.slice(0, 8)}]`, data)
         },

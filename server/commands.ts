@@ -1,4 +1,5 @@
 import { query, type Query } from '@anthropic-ai/claude-agent-sdk'
+import { envForProfile } from './profiles'
 import { store } from './store'
 
 export interface SlashCmd {
@@ -102,7 +103,7 @@ export async function commandsFor(cwd: string): Promise<SlashCmd[]> {
           systemPrompt: { type: 'preset', preset: 'claude_code' },
           settingSources: ['user', 'project', 'local'],
           abortController: abort,
-          env: { ...process.env, ANTHROPIC_API_KEY: undefined },
+          env: envForProfile(null),
         },
       })
       const cmds = await q.supportedCommands()
