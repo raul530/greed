@@ -49,6 +49,16 @@ export class ProjectRegistry {
     return project
   }
 
+  rename(id: string, name: string): Project {
+    const cleanName = name.trim()
+    if (!cleanName) throw new Error('Nome do projeto é obrigatório')
+    const project = this.get(id)
+    if (!project) throw new Error('Projeto não encontrado')
+    project.name = cleanName
+    store.saveProjects(this.projects)
+    return project
+  }
+
   remove(id: string): void {
     this.projects = this.projects.filter((p) => p.id !== id)
     store.saveProjects(this.projects)

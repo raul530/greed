@@ -53,6 +53,11 @@ export const api = {
     j<BrowseResult>(`/api/browse${dir ? `?path=${encodeURIComponent(dir)}` : ''}`),
   addProject: (name: string, path: string) =>
     j<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name, path }) }),
+  renameProject: (id: string, name: string) =>
+    j<Project>(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
   removeProject: (id: string) =>
     j<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   newSession: (

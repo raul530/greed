@@ -48,6 +48,8 @@ function composeForModel(text: string, attachments: MsgAttachment[]): string {
 }
 
 const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
+/** teto do nome de um chat renomeado à mão */
+const TITLE_MAX = 120
 /** quantas perguntas de canto ficam guardadas por sessão */
 const BTW_KEEP = 30
 function normalizePermMode(mode?: string): string {
@@ -220,7 +222,8 @@ export class SessionManager {
     void generateTitle(prompt).then((title) => {
       if (!title) return
       const s = this.sessions.get(session.id)
-      if (s) this.touch(s, { title })
+      // se o usuário já renomeou na mão enquanto o modelo pensava, o dele vale
+      if (s && s.title === session.title) this.touch(s, { title })
     })
     return session
   }
@@ -376,6 +379,23 @@ export class SessionManager {
           'doc',
         ),
     })
+  }
+
+  /** renomeia o chat; vazio é ignorado pra não deixar card sem nome */
+  renameSession(sessionId: string, title: string): void {
+    const session = this.sessions.get(sessionId)
+    const clean = title.trim().slice(0, TITLE_MAX)
+    if (!session || !clean || session.title === clean) return
+    this.touch(session, { title: clean })
+  }
+
+  /** projeto renomeado: os chats guardam o nome junto, então acompanham */
+  renameProject(projectId: string, name: string): void {
+    for (const session of this.sessions.values()) {
+      if (session.projectId === projectId && session.projectName !== name) {
+        this.touch(session, { projectName: name })
+      }
+    }
   }
 
   setModel(sessionId: string, model: string | null): void {

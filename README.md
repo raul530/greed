@@ -28,6 +28,7 @@ then open http://localhost:5173.
 - documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
 - per chat: pick model (explicit version), reasoning effort, permission mode (ask, or autonomous by default), and account (which claude subscription pays for it).
 - attachments: paperclip or drag and drop.
+- rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
 - resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
 - themes: orange, purple, green.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.

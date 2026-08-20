@@ -243,6 +243,7 @@ export type ClientMsg =
     }
   | { type: 'interrupt'; sessionId: string }
   | { type: 'mark_read'; sessionId: string }
+  | { type: 'set_title'; sessionId: string; title: string }
   | { type: 'set_model'; sessionId: string; model: string | null }
   | { type: 'set_effort'; sessionId: string; effort: string | null }
   | { type: 'set_profile'; sessionId: string; profile: string | null }

@@ -376,6 +376,7 @@ export function App() {
               onPermission={(requestId, behavior) =>
                 send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
               }
+              onRename={(title) => send({ type: 'set_title', sessionId: s.id, title })}
               onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
               onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}
               profiles={profiles.list}
@@ -414,6 +415,7 @@ export function App() {
       {historyOpen && (
         <HistoryPanel
           sessions={closedSessions}
+          onRename={(id, title) => send({ type: 'set_title', sessionId: id, title })}
           onClose={() => setHistoryOpen(false)}
           onReopen={(id) => {
             call(api.reopenSession(id))

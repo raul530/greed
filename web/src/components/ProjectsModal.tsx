@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Project } from '../../../shared/types'
 import { api } from '../api'
 import { FolderPicker } from './FolderPicker'
+import { InlineEdit } from './InlineEdit'
 
 interface Props {
   projects: Project[]
@@ -14,6 +15,7 @@ export function ProjectsModal({ projects, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
 
   const add = async () => {
     if (!name.trim() || !path.trim() || busy) return
@@ -44,9 +46,25 @@ export function ProjectsModal({ projects, onClose }: Props) {
             {projects.map((p) => (
               <li key={p.id}>
                 <div>
-                  <b>{p.name}</b>
+                  {editing === p.id ? (
+                    <InlineEdit
+                      value={p.name}
+                      onCommit={(next) => {
+                        setEditing(null)
+                        api
+                          .renameProject(p.id, next)
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                      }}
+                      onCancel={() => setEditing(null)}
+                    />
+                  ) : (
+                    <b>{p.name}</b>
+                  )}
                   <span className="project-path">{p.path}</span>
                 </div>
+                <button className="icon" title="Renomear" onClick={() => setEditing(p.id)}>
+                  ✎
+                </button>
                 <button
                   className="icon"
                   title="Remover projeto (não apaga a pasta)"

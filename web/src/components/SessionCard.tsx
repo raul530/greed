@@ -19,6 +19,7 @@ import {
   typedCommand,
   useCommands,
 } from './commands/SlashMenu'
+import { InlineEdit } from './InlineEdit'
 import { PermissionDock } from './PermissionDock'
 import { PreviewPane } from './preview/PreviewPane'
 import { PreviewRail } from './preview/PreviewRail'
@@ -48,6 +49,7 @@ interface Props {
   onSetModel: (model: string | null) => void
   onSetEffort: (effort: string | null) => void
   onSetPermissionMode: (mode: string) => void
+  onRename: (title: string) => void
   profiles: Profile[]
   defaultProfile: string | null
   onSetProfile: (profile: string | null) => void
@@ -66,6 +68,7 @@ export function SessionCard(props: Props) {
   const [treeOpen, setTreeOpen] = useState(false)
   const [prevOpen, setPrevOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [renaming, setRenaming] = useState(false)
   const act = useActivity(props.activity)
   const size = useCardSize(session.id)
   const prev = usePreview(session.id, session.status)
@@ -182,9 +185,28 @@ export function SessionCard(props: Props) {
               </span>
             )}
           </div>
-          <div className="card-title" title={session.title}>
-            {session.title}
-          </div>
+          {renaming ? (
+            <InlineEdit
+              className="card-title-edit"
+              value={session.title}
+              onCommit={(next) => {
+                props.onRename(next)
+                setRenaming(false)
+              }}
+              onCancel={() => setRenaming(false)}
+            />
+          ) : (
+            <div
+              className="card-title"
+              title={`${session.title}\n(duplo clique pra renomear)`}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setRenaming(true)
+              }}
+            >
+              {session.title}
+            </div>
+          )}
         </div>
         <div className="card-actions">
           {props.profiles.length > 1 && (
