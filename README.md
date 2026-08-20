@@ -12,7 +12,7 @@ auth is your claude subscription via the existing claude code login. it never as
 
 ## run
 
-needs node 18+ and claude code installed and logged in (`claude login`).
+needs node 18+ and claude code installed and logged in (`claude login`). there is an `.nvmrc` pinned to node 22, so `nvm use` picks the version this was built on.
 
 ```bash
 npm install
@@ -30,7 +30,7 @@ then open http://localhost:5173.
 - attachments: paperclip or drag and drop.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
 - resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
-- themes: orange, purple, green.
+- themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each, then let ◐ follow the os and switch between them on its own.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
 ## accounts (profiles)

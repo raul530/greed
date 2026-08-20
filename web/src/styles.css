@@ -2,6 +2,7 @@
 
 :root {
   /* tema padrão: blueprint laranja */
+  color-scheme: dark;
   --primary-rgb: 255, 122, 24;
   --glow-rgb: 255, 154, 60;
   --bg: #0b0906;
@@ -27,6 +28,9 @@
      Hue distinto do tema, para não competir com working/finished. */
   --alert-rgb: 255, 47, 77;
   --alert: #ff2f4d;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --vignette: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(4, 3, 1, 0.72);
   --hatch: repeating-linear-gradient(45deg, transparent 0 3px, var(--fill-mid) 3px 4px);
 
   /* altura da barra do preview, usada pra fechar o palco em 16:9 */
@@ -71,6 +75,75 @@
   --alert: #ffcc33;
 }
 
+/* claros: mesma planta, tinta sobre papel. o realce é mais escuro que o primário,
+   não mais claro, senão some no fundo */
+
+/* tema: papel pardo (sépia) */
+:root[data-theme='paper'] {
+  color-scheme: light;
+  --shadow: rgba(58, 56, 44, 0.13);
+  --vignette: rgba(58, 56, 44, 0.04);
+  --scrim: rgba(58, 56, 44, 0.26);
+  --primary-rgb: 150, 96, 31;
+  --glow-rgb: 109, 69, 21;
+  --bg: #f1ecd8;
+  --panel: #f7f3e3;
+  --card: #f6f2e2;
+  --card-head: #e9e3cb;
+  --sunk: #e6e0c6;
+  --primary: #96601f;
+  --glow: #6d4515;
+  --edge: #cbc2a0;
+  --text: #3a382c;
+  --muted: #7a7460;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
+}
+
+/* tema: sálvia (papel esverdeado) */
+:root[data-theme='sage'] {
+  color-scheme: light;
+  --shadow: rgba(43, 54, 38, 0.13);
+  --vignette: rgba(43, 54, 38, 0.04);
+  --scrim: rgba(43, 54, 38, 0.26);
+  --primary-rgb: 67, 113, 47;
+  --glow-rgb: 45, 82, 32;
+  --bg: #e9efdf;
+  --panel: #f1f5ea;
+  --card: #eff4e8;
+  --card-head: #e1e8d4;
+  --sunk: #dde5cf;
+  --primary: #43712f;
+  --glow: #2d5220;
+  --edge: #b9c7a8;
+  --text: #2b3626;
+  --muted: #667559;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
+}
+
+/* tema: lilás (papel azulado) */
+:root[data-theme='lilac'] {
+  color-scheme: light;
+  --shadow: rgba(43, 38, 64, 0.13);
+  --vignette: rgba(43, 38, 64, 0.04);
+  --scrim: rgba(43, 38, 64, 0.26);
+  --primary-rgb: 95, 72, 171;
+  --glow-rgb: 69, 51, 138;
+  --bg: #e7e4f0;
+  --panel: #f0eef7;
+  --card: #eeecf5;
+  --card-head: #ddd9ea;
+  --sunk: #d9d5e6;
+  --primary: #5f48ab;
+  --glow: #45338a;
+  --edge: #bcb5d2;
+  --text: #2b2640;
+  --muted: #6a6285;
+  --alert-rgb: 176, 42, 34;
+  --alert: #b02a22;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -88,7 +161,7 @@ body {
   -webkit-font-smoothing: antialiased;
   background-color: var(--bg);
   background-image:
-    radial-gradient(130% 130% at 50% -10%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(130% 130% at 50% -10%, transparent 55%, var(--vignette) 100%),
     linear-gradient(var(--fill-faint) 1px, transparent 1px),
     linear-gradient(90deg, var(--fill-faint) 1px, transparent 1px);
   background-size:
@@ -384,6 +457,32 @@ kbd {
   background: #aee06c;
 }
 
+/* claros: o quadradinho mostra o papel, a borda mostra a tinta */
+.swatch.paper {
+  background: #f1ecd8;
+  border-color: #8d5a1e;
+}
+
+.swatch.sage {
+  background: #e9efdf;
+  border-color: #3d6a2d;
+}
+
+.swatch.lilac {
+  background: #e7e4f0;
+  border-color: #5842a0;
+}
+
+.swatch.group-start {
+  margin-left: 7px;
+}
+
+.theme-mode {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 /* ── filtro de projetos ─────────────────────────────── */
 
 .filter {
@@ -406,7 +505,7 @@ kbd {
   border: 1px solid var(--primary);
   border-radius: var(--r);
   padding: 5px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 40px var(--shadow);
 }
 
 .filter-item {
@@ -476,7 +575,7 @@ kbd {
   height: auto;
   min-height: 0;
   resize: none;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 80px var(--shadow);
 }
 
 .card::-webkit-resizer {
@@ -508,7 +607,7 @@ kbd {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(4, 3, 1, 0.72);
+  background: var(--scrim);
 }
 
 /* working: scanline varrendo o módulo */
@@ -589,6 +688,38 @@ kbd {
       0 0 0 1px var(--alert) inset,
       0 0 54px 6px rgba(var(--alert-rgb), 0.6),
       0 0 120px 14px rgba(var(--alert-rgb), 0.3);
+  }
+}
+
+/* claros: luz desfocada atrás do card viraria mancha suja, porque a tinta é
+   escura. A moldura engrossa em vez de acender. */
+:root[data-scheme='light'] .card.attn-finished {
+  box-shadow:
+    0 0 0 1px var(--primary) inset,
+    0 0 0 4px rgba(var(--primary-rgb), 0.16);
+}
+
+:root[data-scheme='light'] .card.waiting {
+  box-shadow:
+    0 0 0 1px var(--alert) inset,
+    0 0 0 4px rgba(var(--alert-rgb), 0.16);
+}
+
+:root[data-scheme='light'] .card.attn-waiting {
+  animation-name: waitpulse-light;
+}
+
+@keyframes waitpulse-light {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--alert) inset,
+      0 0 0 3px rgba(var(--alert-rgb), 0.14);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px var(--alert) inset,
+      0 0 0 7px rgba(var(--alert-rgb), 0.26);
   }
 }
 
@@ -1385,7 +1516,7 @@ kbd {
   background: var(--panel);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 80px var(--shadow);
   overflow: hidden;
 }
 
@@ -1635,7 +1766,7 @@ kbd {
   background: var(--panel);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 18px 60px var(--shadow);
   overflow: hidden;
 }
 
@@ -1766,7 +1897,7 @@ kbd {
   background: var(--sunk);
   border: 1px solid var(--primary);
   border-radius: var(--r);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 20px var(--shadow);
   color: var(--text);
   font: 10px/1.35 var(--mono);
   letter-spacing: 0.04em;
@@ -2088,7 +2219,7 @@ kbd {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(4, 3, 1, 0.72);
+  background: var(--scrim);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2101,7 +2232,7 @@ kbd {
   border: 1px solid var(--primary);
   border-radius: var(--r);
   padding: 20px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 80px var(--shadow);
 }
 
 .modal h2 {
@@ -2159,7 +2290,7 @@ kbd {
 .modal.dragging {
   box-shadow:
     0 0 0 1px var(--primary) inset,
-    0 24px 80px rgba(0, 0, 0, 0.6);
+    0 24px 80px var(--shadow);
 }
 
 .prompt-row {
@@ -2413,7 +2544,7 @@ kbd {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(4, 3, 1, 0.6);
+  background: var(--scrim);
 }
 
 .drawer {
@@ -2427,7 +2558,7 @@ kbd {
   border-left: 1px solid var(--primary);
   display: flex;
   flex-direction: column;
-  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.5);
+  box-shadow: -16px 0 48px var(--shadow);
 }
 
 .drawer header {

@@ -15,7 +15,37 @@ import { connectWS, type WSHandle } from './ws'
 
 const HIDDEN_KEY = 'greed:hiddenProjects'
 const THEME_KEY = 'greed:theme'
-const THEMES = ['orange', 'purple', 'green'] as const
+const DARK_THEMES = ['orange', 'purple', 'green'] as const
+const LIGHT_THEMES = ['paper', 'sage', 'lilac'] as const
+const MODES = ['auto', 'dark', 'light'] as const
+
+type Mode = (typeof MODES)[number]
+
+/** o tema escuro e o claro preferidos, e quem decide qual dos dois vale agora */
+interface ThemePref {
+  mode: Mode
+  dark: string
+  light: string
+}
+
+const MODE_LABEL: Record<Mode, { icon: string; tip: string }> = {
+  auto: { icon: '◐', tip: 'Tema pelo sistema — clique pra fixar no escuro' },
+  dark: { icon: '☾', tip: 'Fixo no escuro — clique pra fixar no claro' },
+  light: { icon: '☀', tip: 'Fixo no claro — clique pra seguir o sistema' },
+}
+
+function loadTheme(): ThemePref {
+  const fallback: ThemePref = { mode: 'auto', dark: 'orange', light: 'paper' }
+  try {
+    const raw = localStorage.getItem(THEME_KEY)
+    if (!raw) return fallback
+    // versão antiga guardava só o nome do tema escuro
+    if (!raw.startsWith('{')) return { ...fallback, dark: raw }
+    return { ...fallback, ...(JSON.parse(raw) as Partial<ThemePref>) }
+  } catch {
+    return fallback
+  }
+}
 
 /** telas da HUD — o board é a de sempre; as outras entram aqui */
 const VIEWS = [
@@ -67,25 +97,31 @@ export function App() {
       .then(({ profiles: list, default: def }) => setProfiles({ list, default: def }))
       .catch(() => {})
   }, [modal])
-  const [theme, setTheme] = useState<string>(() => {
-    try {
-      return localStorage.getItem(THEME_KEY) ?? 'orange'
-    } catch {
-      return 'orange'
-    }
-  })
+  const [theme, setTheme] = useState<ThemePref>(loadTheme)
+  const [systemDark, setSystemDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+  )
   const inputRefs = useRef(new Map<string, HTMLTextAreaElement>())
 
   useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'orange') root.removeAttribute('data-theme')
-    else root.setAttribute('data-theme', theme)
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const read = () => setSystemDark(mq.matches)
+    mq.addEventListener('change', read)
+    return () => mq.removeEventListener('change', read)
+  }, [])
+
+  const scheme = theme.mode === 'auto' ? (systemDark ? 'dark' : 'light') : theme.mode
+  const activeTheme = scheme === 'dark' ? theme.dark : theme.light
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', activeTheme)
+    document.documentElement.setAttribute('data-scheme', scheme)
     try {
-      localStorage.setItem(THEME_KEY, theme)
+      localStorage.setItem(THEME_KEY, JSON.stringify(theme))
     } catch {
       // localStorage indisponível — tema só não persiste
     }
-  }, [theme])
+  }, [theme, activeTheme, scheme])
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   )
@@ -272,16 +308,35 @@ export function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <div className="themes" title="Tema">
-            {THEMES.map((t) => (
-              <button
-                key={t}
-                className={`swatch ${t} ${theme === t ? 'active' : ''}`}
-                title={t}
-                aria-label={`tema ${t}`}
-                onClick={() => setTheme(t)}
-              />
-            ))}
+          <div className="themes">
+            <button
+              className="theme-mode"
+              data-tip={MODE_LABEL[theme.mode].tip}
+              onClick={() =>
+                setTheme((p) => ({ ...p, mode: MODES[(MODES.indexOf(p.mode) + 1) % MODES.length] }))
+              }
+            >
+              {MODE_LABEL[theme.mode].icon}
+            </button>
+            {[...DARK_THEMES, ...LIGHT_THEMES].map((t) => {
+              const light = (LIGHT_THEMES as readonly string[]).includes(t)
+              return (
+                <button
+                  key={t}
+                  className={[
+                    'swatch',
+                    t,
+                    (light ? theme.light : theme.dark) === t ? 'active' : '',
+                    t === LIGHT_THEMES[0] ? 'group-start' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  data-tip={`${t} — seu tema ${light ? 'claro' : 'escuro'}`}
+                  aria-label={`tema ${t}`}
+                  onClick={() => setTheme((p) => (light ? { ...p, light: t } : { ...p, dark: t }))}
+                />
+              )
+            })}
           </div>
           {notifPerm === 'default' && (
             <button onClick={requestNotif} title="Notificações de desktop quando um chat terminar">
