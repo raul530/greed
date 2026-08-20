@@ -25,6 +25,7 @@ import { PreviewRail } from './preview/PreviewRail'
 import { usePreview } from './preview/usePreview'
 import { Transcript } from './Transcript'
 import { AttachChips, useAttachments } from './useAttachments'
+import { useCardSize } from './useCardSize'
 import { useDraft } from './useDraft'
 
 interface Props {
@@ -66,6 +67,7 @@ export function SessionCard(props: Props) {
   const [prevOpen, setPrevOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const act = useActivity(props.activity)
+  const size = useCardSize(session.id)
   const prev = usePreview(session.id, session.status)
   const rootRef = useRef<HTMLElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -136,7 +138,9 @@ export function SessionCard(props: Props) {
     <section
       ref={rootRef}
       className={cls}
+      style={expanded ? undefined : size.style}
       onMouseDown={seen}
+      onPointerUp={(e) => !expanded && size.remember(e.currentTarget)}
       onFocusCapture={seen}
       data-session={session.id}
       onDragOver={(e) => {
@@ -396,6 +400,7 @@ export function SessionCard(props: Props) {
           onClose={() => setPrevOpen(false)}
         />
       )}
+      <span className="card-grip" aria-hidden="true" />
     </section>
   )
 }
