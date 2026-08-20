@@ -10,6 +10,7 @@ import { Hub } from './hub'
 import { buildInsights } from './insights'
 import { SessionManager } from './manager'
 import { warmMemory } from './memory'
+import { defaultProfileDir, listProfiles } from './profiles'
 import { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fetchUsage, lastKnownUsage, POLL_MS, startUsagePoller } from './usage'
@@ -102,6 +103,9 @@ hub.onMessage((msg) => {
     case 'set_permission_mode':
       manager.setPermissionMode(msg.sessionId, msg.mode)
       break
+    case 'set_profile':
+      manager.setProfile(msg.sessionId, msg.profile)
+      break
   }
 })
 
@@ -122,22 +126,28 @@ app.get('/api/insights', async (req, res) => {
 })
 
 // leitura sob demanda (botão "Atualizar"), fora do ritmo do poller
-app.get('/api/usage', async (_req, res) => {
+app.get('/api/usage', async (req, res) => {
+  const raw = req.query.profile ? String(req.query.profile) : null
+  const profile = raw && listProfiles().some((p) => p.dir === raw) ? raw : null
   try {
-    const usage = await fetchUsage()
-    lastUsage = { type: 'usage', usage, error: null }
-    hub.broadcast(lastUsage)
+    const usage = await fetchUsage(profile)
+    if (!profile) {
+      lastUsage = { type: 'usage', usage, error: null }
+      hub.broadcast(lastUsage)
+    }
     res.json(usage)
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     // taxa travada com leitura antiga na mão: devolve a antiga em vez de esvaziar a tela
-    const known = lastKnownUsage()
+    const known = lastKnownUsage(profile)
     if (known) {
       res.json(known)
       return
     }
-    lastUsage = { type: 'usage', usage: null, error }
-    hub.broadcast(lastUsage)
+    if (!profile) {
+      lastUsage = { type: 'usage', usage: null, error }
+      hub.broadcast(lastUsage)
+    }
     res.status(502).json({ error })
   }
 })
@@ -195,9 +205,13 @@ app.delete('/api/projects/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+app.get('/api/profiles', (_req, res) => {
+  res.json({ profiles: listProfiles(), default: defaultProfileDir() })
+})
+
 app.post('/api/sessions', (req, res) => {
   try {
-    const { projectId, prompt, model, effort, permissionMode, codebasePath, attachments } =
+    const { projectId, prompt, model, effort, permissionMode, codebasePath, profile, attachments } =
       (req.body ?? {}) as {
         projectId?: string
         prompt?: string
@@ -205,6 +219,7 @@ app.post('/api/sessions', (req, res) => {
         effort?: string | null
         permissionMode?: string
         codebasePath?: string | null
+        profile?: string | null
         attachments?: MsgAttachment[]
       }
     if (!prompt || !prompt.trim()) throw new Error('O primeiro prompt é obrigatório')
@@ -215,6 +230,7 @@ app.post('/api/sessions', (req, res) => {
       effort ?? null,
       permissionMode,
       codebasePath ?? null,
+      profile ?? null,
       Array.isArray(attachments) ? attachments : [],
     )
     res.json(session)

@@ -26,11 +26,25 @@ then open http://localhost:5173.
 - projects: register a folder (like a repo). the session runs there and uses its claude.md and .mcp.json.
 - memory: each project remembers durable facts across sessions, on optmem. see below.
 - documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
-- per chat: pick model (explicit version), reasoning effort, and permission mode (ask, or autonomous by default).
+- per chat: pick model (explicit version), reasoning effort, permission mode (ask, or autonomous by default), and account (which claude subscription pays for it).
 - attachments: paperclip or drag and drop.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
+- resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
 - themes: orange, purple, green.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
+
+## accounts (profiles)
+
+one claude login is enough, but if you have more than one subscription (say personal and work) each board can run on a different account.
+
+a profile is just a claude code config folder. `~/.claude` is the default one; any `~/.claude-<name>` folder that has been logged in once is another account. to add one:
+
+```bash
+CLAUDE_CONFIG_DIR=$HOME/.claude-work claude
+# inside it, run: /login
+```
+
+greed detects the `~/.claude*` folders automatically. when there is more than one, the new chat modal shows an account picker, the card shows an `@name` badge, and everything that session spawns (the agent, /btw, background helpers) is billed to that account. boards with no explicit account use the default profile (`~/.claude`, or whatever `CLAUDE_CONFIG_DIR` the server was started with). the consumo page gets the same picker: subscription limits and history are tracked per account, while insights stay machine-wide.
 
 ## memory
 

@@ -458,7 +458,8 @@ kbd {
   display: flex;
   flex-direction: column;
   height: min(46vh, 520px);
-  min-height: 340px;
+  min-height: 260px;
+  resize: both;
   background: var(--card);
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
@@ -474,7 +475,33 @@ kbd {
   z-index: 50;
   height: auto;
   min-height: 0;
+  resize: none;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+}
+
+.card::-webkit-resizer {
+  background: transparent;
+}
+
+.card-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--edge) 45% 58%,
+    transparent 58% 70%,
+    var(--edge) 70% 83%,
+    transparent 83%
+  );
+}
+
+.card.expanded .card-grip {
+  display: none;
 }
 
 .expand-backdrop {
@@ -604,6 +631,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 7px 8px 7px 12px;
   background: var(--card-head);
@@ -623,6 +651,7 @@ kbd {
 }
 
 .card-titles {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -633,6 +662,13 @@ kbd {
   font-size: 11px;
   font-weight: 600;
   color: var(--glow);
+}
+
+.card-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-kbd {
@@ -654,12 +690,20 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 2px;
+  contain: inline-size;
 }
 
 .card-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.card-actions button,
+.card-actions .status-dot {
   flex: none;
 }
 
@@ -672,11 +716,17 @@ kbd {
   letter-spacing: 0.06em;
   padding: 2px 4px;
   max-width: 88px;
+  min-width: 46px;
   cursor: pointer;
 }
 
 .model-select.effort-select {
   max-width: 80px;
+}
+
+.model-select:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .model-select:hover {
@@ -2180,6 +2230,30 @@ kbd {
   margin: 6px 0 12px;
 }
 
+.profile-guide {
+  color: var(--muted);
+  font-size: 10px;
+  margin: 0 0 12px;
+}
+
+.profile-guide summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.profile-guide p {
+  margin: 6px 0;
+}
+
+.profile-guide pre {
+  font: 10px var(--mono);
+  background: var(--sunk);
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  padding: 6px 8px;
+  overflow-x: auto;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -3068,6 +3142,10 @@ kbd {
 @media (max-width: 920px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .grid > .card {
+    grid-column: 1 / -1 !important;
   }
 
   .usage {

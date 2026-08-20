@@ -2,11 +2,13 @@
 // O token OAuth fica no chaveiro (macOS) ou em ~/.claude/.credentials.json e NUNCA
 // sai daqui: pro navegador vão só os percentuais já mastigados.
 import { execFile } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import type { UsageExtra, UsageLimit, UsageSample, UsageSnapshot } from '../shared/types'
+import { defaultProfileDir } from './profiles'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,6 +27,52 @@ const SAMPLE_EVERY_MS = 5 * 60_000
 const HISTORY_MAX = 2000
 
 const HISTORY_FILE = path.join(process.cwd(), 'data', 'usage-history.json')
+
+/**
+ * Todo o estado de leitura (token, última boa, histórico, gap de taxa) vive por
+ * conta: cada perfil (CLAUDE_CONFIG_DIR) é uma assinatura com limites próprios.
+ * O perfil padrão mantém o arquivo de histórico legado; os outros ganham um
+ * arquivo com sufixo derivado da pasta.
+ */
+interface ProfileUsage {
+  dir: string | null
+  file: string
+  cachedToken: { value: string; readAt: number } | null
+  lastCallAt: number
+  lastGood: UsageSnapshot | null
+  history: UsageSample[]
+  historyDirty: boolean
+}
+
+const perProfile = new Map<string, ProfileUsage>()
+
+function usageFor(profileDir: string | null): ProfileUsage {
+  const def = defaultProfileDir()
+  const dir = profileDir ?? def
+  const key = dir ?? ''
+  let st = perProfile.get(key)
+  if (!st) {
+    const file =
+      dir && dir !== def
+        ? path.join(
+            process.cwd(),
+            'data',
+            `usage-history-${crypto.createHash('sha256').update(dir).digest('hex').slice(0, 8)}.json`,
+          )
+        : HISTORY_FILE
+    st = {
+      dir,
+      file,
+      cachedToken: null,
+      lastCallAt: 0,
+      lastGood: null,
+      history: loadHistory(file),
+      historyDirty: false,
+    }
+    perProfile.set(key, st)
+  }
+  return st
+}
 
 interface RawLimit {
   kind?: string
@@ -57,8 +105,6 @@ interface RawUsage {
 
 // ── token ────────────────────────────────────────────────────────────────────
 
-let cachedToken: { value: string; readAt: number } | null = null
-
 function tokenFromJson(raw: string): string | null {
   try {
     const parsed = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string } }
@@ -68,29 +114,45 @@ function tokenFromJson(raw: string): string | null {
   }
 }
 
-async function readToken(force = false): Promise<string> {
-  if (!force && cachedToken && Date.now() - cachedToken.readAt < TOKEN_TTL_MS) {
-    return cachedToken.value
+async function readToken(st: ProfileUsage, force = false): Promise<string> {
+  if (!force && st.cachedToken && Date.now() - st.cachedToken.readAt < TOKEN_TTL_MS) {
+    return st.cachedToken.value
   }
   const fromEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN
   let value: string | null = fromEnv && fromEnv.trim() ? fromEnv.trim() : null
 
   if (!value && process.platform === 'darwin') {
-    try {
-      const { stdout } = await execFileAsync('security', [
-        'find-generic-password',
-        '-s',
-        KEYCHAIN_SERVICE,
-        '-w',
-      ])
-      value = tokenFromJson(stdout)
-    } catch {
-      // sem entrada no chaveiro — cai no arquivo
+    const services = [
+      ...(st.dir
+        ? [
+            `${KEYCHAIN_SERVICE}-${crypto.createHash('sha256').update(st.dir).digest('hex').slice(0, 8)}`,
+          ]
+        : []),
+      KEYCHAIN_SERVICE,
+    ]
+    for (const service of services) {
+      try {
+        const { stdout } = await execFileAsync('security', [
+          'find-generic-password',
+          '-s',
+          service,
+          '-w',
+        ])
+        value = tokenFromJson(stdout)
+        if (value) break
+      } catch {
+        // sem essa entrada no chaveiro — tenta a próxima, depois o arquivo
+      }
     }
   }
   if (!value) {
     try {
-      value = tokenFromJson(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8'))
+      value = tokenFromJson(
+        fs.readFileSync(
+          path.join(st.dir ?? path.join(os.homedir(), '.claude'), '.credentials.json'),
+          'utf8',
+        ),
+      )
     } catch {
       // sem arquivo de credenciais
     }
@@ -98,7 +160,7 @@ async function readToken(force = false): Promise<string> {
   if (!value) {
     throw new Error('Sem credencial do Claude — faça login no Claude Code (claude /login)')
   }
-  cachedToken = { value, readAt: Date.now() }
+  st.cachedToken = { value, readAt: Date.now() }
   return value
 }
 
@@ -197,38 +259,35 @@ function normalize(raw: RawUsage): { limits: UsageLimit[]; extra: UsageExtra | n
 
 // ── histórico ────────────────────────────────────────────────────────────────
 
-function loadHistory(): UsageSample[] {
+function loadHistory(file: string): UsageSample[] {
   try {
-    const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) as UsageSample[]
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as UsageSample[]
     return Array.isArray(parsed) ? parsed.slice(-HISTORY_MAX) : []
   } catch {
     return []
   }
 }
 
-let history: UsageSample[] = loadHistory()
-let historyDirty = false
-
-function saveHistory(): void {
-  if (!historyDirty) return
-  historyDirty = false
+function saveHistory(st: ProfileUsage): void {
+  if (!st.historyDirty) return
+  st.historyDirty = false
   try {
-    fs.mkdirSync(path.dirname(HISTORY_FILE), { recursive: true })
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history))
+    fs.mkdirSync(path.dirname(st.file), { recursive: true })
+    fs.writeFileSync(st.file, JSON.stringify(st.history))
   } catch {
     // histórico é enfeite; se não gravar, tudo bem
   }
 }
 
-function pushSample(limits: UsageLimit[]): void {
+function pushSample(st: ProfileUsage, limits: UsageLimit[]): void {
   const values: Record<string, number> = {}
   for (const l of limits) values[l.id] = l.percent
-  const last = history[history.length - 1]
+  const last = st.history[st.history.length - 1]
   const changed = !last || Object.entries(values).some(([k, v]) => last.values[k] !== v)
   if (!changed && last && Date.now() - last.ts < SAMPLE_EVERY_MS) return
-  history.push({ ts: Date.now(), values })
-  if (history.length > HISTORY_MAX) history = history.slice(-HISTORY_MAX)
-  historyDirty = true
+  st.history.push({ ts: Date.now(), values })
+  if (st.history.length > HISTORY_MAX) st.history = st.history.slice(-HISTORY_MAX)
+  st.historyDirty = true
 }
 
 // ── fetch + poll ─────────────────────────────────────────────────────────────
@@ -253,20 +312,17 @@ export class RateLimited extends Error {
   }
 }
 
-let lastCallAt = 0
-/** última leitura boa — serve pra devolver algo quando a taxa está travada */
-let lastGood: UsageSnapshot | null = null
-
-/** Lê o consumo agora. Lança com mensagem legível quando não dá. */
-export async function fetchUsage(): Promise<UsageSnapshot> {
+/** Lê o consumo de uma conta agora (padrão do servidor quando não vem perfil). */
+export async function fetchUsage(profileDir: string | null = null): Promise<UsageSnapshot> {
+  const st = usageFor(profileDir)
   // duas chamadas coladas (poke + poll, ou dois cliques) só gastariam cota
-  if (lastGood && Date.now() - lastCallAt < MIN_GAP_MS) return lastGood
-  lastCallAt = Date.now()
+  if (st.lastGood && Date.now() - st.lastCallAt < MIN_GAP_MS) return st.lastGood
+  st.lastCallAt = Date.now()
 
-  let { status, body } = await callApi(await readToken())
+  let { status, body } = await callApi(await readToken(st))
   if (status === 401 || status === 403) {
     // token pode ter sido renovado pelo Claude Code — relê e tenta de novo
-    ;({ status, body } = await callApi(await readToken(true)))
+    ;({ status, body } = await callApi(await readToken(st, true)))
   }
   if (status === 429) throw new RateLimited()
   if (status !== 200) {
@@ -277,10 +333,10 @@ export async function fetchUsage(): Promise<UsageSnapshot> {
     throw new Error(`Endpoint de uso respondeu ${status}: ${detail}`)
   }
   const { limits, extra } = normalize((body ?? {}) as RawUsage)
-  pushSample(limits)
-  saveHistory() // no-op quando a amostra não mudou nada
-  lastGood = { fetchedAt: Date.now(), limits, extra, history }
-  return lastGood
+  pushSample(st, limits)
+  saveHistory(st) // no-op quando a amostra não mudou nada
+  st.lastGood = { fetchedAt: Date.now(), limits, extra, history: st.history }
+  return st.lastGood
 }
 
 export type UsageListener = (usage: UsageSnapshot | null, error: string | null) => void
@@ -313,7 +369,7 @@ export function startUsagePoller(
         backoffMs = Math.min(MAX_BACKOFF_MS, Math.max(POLL_MS * 2, backoffMs * 2))
         nextAllowedAt = Date.now() + backoffMs
         // silêncio só faz sentido se já há o que mostrar na tela
-        if ((backoffMs >= MAX_BACKOFF_MS || !lastGood) && lastError !== err.message) {
+        if ((backoffMs >= MAX_BACKOFF_MS || !usageFor(null).lastGood) && lastError !== err.message) {
           lastError = err.message
           emit(null, err.message)
         }
@@ -336,18 +392,13 @@ export function startUsagePoller(
     stop: () => {
       stopped = true
       clearInterval(timer)
-      saveHistory()
+      for (const st of perProfile.values()) saveHistory(st)
     },
     poke: () => void tick(),
   }
 }
 
-/** Última leitura boa — vale como resposta quando a taxa está travada. */
-export function lastKnownUsage(): UsageSnapshot | null {
-  return lastGood
-}
-
-/** Último histórico conhecido — usado quando o fetch falha mas já temos amostras. */
-export function usageHistory(): UsageSample[] {
-  return history
+/** Última leitura boa de uma conta — vale como resposta quando a taxa está travada. */
+export function lastKnownUsage(profileDir: string | null = null): UsageSnapshot | null {
+  return usageFor(profileDir).lastGood
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { ClientMsg, ServerMsg } from '../../shared/types'
+import type { ClientMsg, Profile, ServerMsg } from '../../shared/types'
 import { api } from './api'
 import { BtwConsole } from './components/BtwConsole'
 import { FleetView } from './components/fleet/FleetView'
@@ -56,6 +56,17 @@ export function App() {
   const [btwSession, setBtwSession] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hiddenProjects, setHiddenProjects] = useState<Set<string>>(loadHidden)
+  const [profiles, setProfiles] = useState<{ list: Profile[]; default: string | null }>({
+    list: [],
+    default: null,
+  })
+
+  useEffect(() => {
+    void api
+      .profiles()
+      .then(({ profiles: list, default: def }) => setProfiles({ list, default: def }))
+      .catch(() => {})
+  }, [modal])
   const [theme, setTheme] = useState<string>(() => {
     try {
       return localStorage.getItem(THEME_KEY) ?? 'orange'
@@ -301,7 +312,12 @@ export function App() {
       </header>
 
       {view === 'usage' ? (
-        <UsageView usage={state.usage} error={state.usageError} />
+        <UsageView
+          usage={state.usage}
+          error={state.usageError}
+          profiles={profiles.list}
+          defaultProfile={profiles.default}
+        />
       ) : view === 'fleet' ? (
         <FleetView
           sessions={state.sessions}
@@ -363,6 +379,9 @@ export function App() {
               onRename={(title) => send({ type: 'set_title', sessionId: s.id, title })}
               onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
               onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}
+              profiles={profiles.list}
+              defaultProfile={profiles.default}
+              onSetProfile={(profile) => send({ type: 'set_profile', sessionId: s.id, profile })}
               onSetPermissionMode={(mode) =>
                 send({ type: 'set_permission_mode', sessionId: s.id, mode })
               }
@@ -385,6 +404,7 @@ export function App() {
       {modal === 'new' && (
         <NewChatModal
           projects={state.projects}
+          profiles={profiles.list}
           onClose={() => setModal('none')}
           onManageProjects={() => setModal('projects')}
         />

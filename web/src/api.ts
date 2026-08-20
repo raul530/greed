@@ -2,6 +2,7 @@ import type {
   BtwExchange,
   InsightsReport,
   MsgAttachment,
+  Profile,
   Project,
   SessionMeta,
   UsageSnapshot,
@@ -66,6 +67,7 @@ export const api = {
     effort: string | null,
     permissionMode: string,
     codebasePath: string | null,
+    profile: string | null,
     attachments: MsgAttachment[] = [],
   ) =>
     j<SessionMeta>('/api/sessions', {
@@ -77,9 +79,11 @@ export const api = {
         effort,
         permissionMode,
         codebasePath,
+        profile,
         attachments,
       }),
     }),
+  profiles: () => j<{ profiles: Profile[]; default: string | null }>('/api/profiles'),
   closeSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/close`, { method: 'POST' }),
   reopenSession: (id: string) =>
@@ -95,7 +99,8 @@ export const api = {
       `/api/sessions/${encodeURIComponent(sessionId)}/preview`,
     ),
   // força uma leitura do consumo agora (o servidor também empurra por WS a cada 30s)
-  refreshUsage: () => j<UsageSnapshot>('/api/usage'),
+  refreshUsage: (profile?: string | null) =>
+    j<UsageSnapshot>(`/api/usage${profile ? `?profile=${encodeURIComponent(profile)}` : ''}`),
   // de onde saiu o consumo, lido dos transcripts locais
   insights: (hours: number) => j<InsightsReport>(`/api/insights?hours=${hours}`),
   uploadAttachment: (sessionId: string, file: File) =>
