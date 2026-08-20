@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Project } from '../../../shared/types'
+import type { Profile, Project } from '../../../shared/types'
 import { api } from '../api'
 import { filesFromClipboard } from '../attachments'
 import { EFFORTS, MODELS, PERMISSION_MODES } from '../models'
@@ -7,15 +7,17 @@ import { FolderPicker } from './FolderPicker'
 import { AttachChips, useAttachments } from './useAttachments'
 
 const PERM_KEY = 'greed:permMode'
+const PROFILE_KEY = 'greed:profile'
 const codebaseKey = (projectId: string) => `greed:codebase:${projectId}`
 
 interface Props {
   projects: Project[]
+  profiles: Profile[]
   onClose: () => void
   onManageProjects: () => void
 }
 
-export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
+export function NewChatModal({ projects, profiles, onClose, onManageProjects }: Props) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
@@ -28,6 +30,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   })
   const [prompt, setPrompt] = useState('')
   const [codebase, setCodebase] = useState('')
+  const [profile, setProfile] = useState('')
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -36,6 +39,16 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => taRef.current?.focus(), [])
+
+  useEffect(() => {
+    let saved = ''
+    try {
+      saved = localStorage.getItem(PROFILE_KEY) ?? ''
+    } catch {
+      // localStorage indisponível — fica no primeiro perfil
+    }
+    setProfile(profiles.some((p) => p.dir === saved) ? saved : (profiles[0]?.dir ?? ''))
+  }, [profiles])
 
   // resolve na hora: cobre projetos que chegam depois do mount ou id que sumiu
   const effectiveId = projects.some((p) => p.id === projectId) ? projectId : (projects[0]?.id ?? '')
@@ -69,6 +82,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
     try {
       try {
         localStorage.setItem(PERM_KEY, permMode)
+        localStorage.setItem(PROFILE_KEY, profile)
         localStorage.setItem(codebaseKey(effectiveId), codebase)
       } catch {
         // localStorage indisponível — só não persiste a preferência
@@ -80,6 +94,7 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
         effort || null,
         permMode,
         codebase || null,
+        profiles.length > 1 ? profile || null : null,
         att.payload(),
       )
       onClose()
@@ -168,21 +183,52 @@ export function NewChatModal({ projects, onClose, onManageProjects }: Props) {
                 </select>
               </label>
             </div>
-            <label>
-              Permissões
-              <select value={permMode} onChange={(e) => setPermMode(e.target.value)}>
-                {PERMISSION_MODES.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="field-row">
+              <label>
+                Permissões
+                <select value={permMode} onChange={(e) => setPermMode(e.target.value)}>
+                  {PERMISSION_MODES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {profiles.length > 1 && (
+                <label>
+                  Conta
+                  <select value={profile} onChange={(e) => setProfile(e.target.value)}>
+                    {profiles.map((p) => (
+                      <option key={p.dir} value={p.dir} title={p.dir}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <p className="field-hint">
               O projeto dá o contexto (CLAUDE.md, memória, documentos). O codebase é a pasta/repo onde
               o agente lê, edita e commita — deixe vazio pra trabalhar na própria pasta do projeto.
               "Não perguntar" roda tools (bash, edições, MCP) sem pedir aprovação.
+              {profiles.length > 1 && ' A conta escolhe qual assinatura Claude paga esta sessão.'}
             </p>
+            <details className="profile-guide">
+              <summary>
+                {profiles.length > 1
+                  ? 'Como adicionar outra conta Claude?'
+                  : 'Quer usar mais de uma conta Claude (pessoal e trabalho)?'}
+              </summary>
+              <p>
+                Cada conta é uma pasta <code>~/.claude-&lt;nome&gt;</code> logada uma vez. No
+                terminal:
+              </p>
+              <pre>{'CLAUDE_CONFIG_DIR=$HOME/.claude-trabalho claude\n# dentro dele: /login'}</pre>
+              <p>
+                Pronto: o greed detecta as pastas <code>~/.claude*</code> sozinho e a conta nova
+                aparece aqui no próximo chat. A pasta <code>~/.claude</code> é a conta "padrão".
+              </p>
+            </details>
             <label>
               Primeiro prompt
               <AttachChips attachments={att.attachments} onRemove={att.remove} />

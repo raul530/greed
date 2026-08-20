@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { BtwExchange, SessionMeta, TranscriptEntry } from '../shared/types'
+import { envForProfile } from './profiles'
 import { truncate } from './util'
 
 /**
@@ -74,7 +75,7 @@ export async function askBtw(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       abortController: abort,
-      env: { ...process.env, ANTHROPIC_API_KEY: undefined },
+      env: envForProfile(session.profile),
     },
   })
 

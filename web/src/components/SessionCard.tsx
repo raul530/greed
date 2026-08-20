@@ -3,6 +3,7 @@ import type {
   ActivityItem,
   MsgAttachment,
   PermissionRequest,
+  Profile,
   SessionMeta,
   TranscriptEntry,
 } from '../../../shared/types'
@@ -24,6 +25,7 @@ import { PreviewRail } from './preview/PreviewRail'
 import { usePreview } from './preview/usePreview'
 import { Transcript } from './Transcript'
 import { AttachChips, useAttachments } from './useAttachments'
+import { useCardSize } from './useCardSize'
 import { useDraft } from './useDraft'
 
 interface Props {
@@ -46,6 +48,9 @@ interface Props {
   onSetModel: (model: string | null) => void
   onSetEffort: (effort: string | null) => void
   onSetPermissionMode: (mode: string) => void
+  profiles: Profile[]
+  defaultProfile: string | null
+  onSetProfile: (profile: string | null) => void
   registerInput: (el: HTMLTextAreaElement | null) => void
 }
 
@@ -62,6 +67,7 @@ export function SessionCard(props: Props) {
   const [prevOpen, setPrevOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const act = useActivity(props.activity)
+  const size = useCardSize(session.id)
   const prev = usePreview(session.id, session.status)
   const rootRef = useRef<HTMLElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -132,7 +138,9 @@ export function SessionCard(props: Props) {
     <section
       ref={rootRef}
       className={cls}
+      style={expanded ? undefined : size.style}
       onMouseDown={seen}
+      onPointerUp={(e) => !expanded && size.remember(e.currentTarget)}
       onFocusCapture={seen}
       data-session={session.id}
       onDragOver={(e) => {
@@ -155,7 +163,7 @@ export function SessionCard(props: Props) {
       <header className="card-head" onDoubleClick={props.onToggleExpand}>
         <div className="card-titles">
           <div className="card-project">
-            {session.projectName}
+            <span className="card-project-name">{session.projectName}</span>
             {index < 9 && <kbd className="card-kbd">{index + 1}</kbd>}
             {permissions.length > 0 && (
               <span className="perm-badge" data-tip="Há pedido(s) de permissão esperando você">
@@ -179,6 +187,25 @@ export function SessionCard(props: Props) {
           </div>
         </div>
         <div className="card-actions">
+          {props.profiles.length > 1 && (
+            <select
+              className="model-select profile-select"
+              value={session.profile ?? props.defaultProfile ?? ''}
+              disabled={session.status !== 'idle' || permissions.length > 0}
+              data-tip={
+                session.status !== 'idle' || permissions.length > 0
+                  ? 'Conta desta sessão — troca só com o chat parado'
+                  : 'Conta que paga esta sessão (troca vale no próximo turno)'
+              }
+              onChange={(e) => props.onSetProfile(e.target.value || null)}
+            >
+              {props.profiles.map((p) => (
+                <option key={p.dir} value={p.dir} title={p.dir}>
+                  @{p.name}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             className="model-select"
             value={session.model ?? ''}
@@ -373,6 +400,7 @@ export function SessionCard(props: Props) {
           onClose={() => setPrevOpen(false)}
         />
       )}
+      <span className="card-grip" aria-hidden="true" />
     </section>
   )
 }

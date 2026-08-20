@@ -1,5 +1,6 @@
 import os from 'node:os'
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { envForProfile } from './profiles'
 
 /**
  * Uma pergunta isolada e descartável a um modelo barato — títulos, descrições
@@ -45,8 +46,7 @@ export async function ask(
         systemPrompt: system,
         persistSession: false,
         abortController: abort,
-        // garante auth pela assinatura (login do Claude Code), nunca por API key
-        env: { ...process.env, ANTHROPIC_API_KEY: undefined },
+        env: envForProfile(null),
       },
     })
     for await (const msg of q) {
