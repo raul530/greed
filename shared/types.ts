@@ -259,6 +259,7 @@ export type ServerMsg =
       activity: Record<string, ActivityItem[]>
     }
   | { type: 'session'; session: SessionMeta }
+  | { type: 'session_gone'; sessionId: string }
   | { type: 'transcript'; sessionId: string; entries: TranscriptEntry[] }
   | { type: 'entry'; sessionId: string; entry: TranscriptEntry }
   | { type: 'delta'; sessionId: string; entryId: string; text: string }

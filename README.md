@@ -29,6 +29,7 @@ then open http://localhost:5173.
 - per chat: pick model (explicit version), reasoning effort, permission mode (ask, or autonomous by default), and account (which claude subscription pays for it).
 - attachments: paperclip or drag and drop.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
+- delete: ✕ in history throws a chat away for good, transcript included. it asks first.
 - resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
 - themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each, then let ◐ follow the os and switch between them on its own.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.

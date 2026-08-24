@@ -63,6 +63,12 @@ export const store = {
     pendingTranscripts.set(sessionId, entries)
     scheduleFlush()
   },
+  deleteTranscript(sessionId: string): void {
+    pendingTranscripts.delete(sessionId)
+    try {
+      fs.unlinkSync(path.join(TRANSCRIPTS_DIR, `${sessionId}.json`))
+    } catch {}
+  },
   /** cache genérico em data/<name>.json (lista de comandos, por exemplo) */
   read<T>(name: string, fallback: T): T {
     return readJson<T>(path.join(DATA_DIR, `${name}.json`), fallback)

@@ -466,6 +466,30 @@ export class SessionManager {
     if (live && session.status === 'idle' && live.pending.size === 0) this.endLive(sessionId)
   }
 
+  deleteSession(sessionId: string): void {
+    if (!this.sessions.has(sessionId)) return
+    const live = this.live.get(sessionId)
+    if (live) {
+      this.rejectAllPending(live, 'Chat apagado.')
+      this.live.delete(sessionId)
+      live.queue.end()
+      live.abort.abort()
+    }
+    const ending = this.ending.get(sessionId)
+    if (ending) {
+      clearTimeout(ending.timer)
+      ending.live.abort.abort()
+      this.ending.delete(sessionId)
+    }
+    this.fleet.dropSession(sessionId)
+    this.btw.delete(sessionId)
+    this.sessions.delete(sessionId)
+    this.transcripts.delete(sessionId)
+    store.deleteTranscript(sessionId)
+    this.save()
+    this.hub.broadcast({ type: 'session_gone', sessionId })
+  }
+
   reopenCard(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return

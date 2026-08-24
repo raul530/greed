@@ -244,6 +244,11 @@ app.post('/api/sessions/:id/close', (req, res) => {
   res.json({ ok: true })
 })
 
+app.delete('/api/sessions/:id', (req, res) => {
+  manager.deleteSession(req.params.id)
+  res.json({ ok: true })
+})
+
 app.post('/api/sessions/:id/reopen', (req, res) => {
   manager.reopenCard(req.params.id)
   res.json({ ok: true })
