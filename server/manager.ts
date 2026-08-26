@@ -228,6 +228,43 @@ export class SessionManager {
     return session
   }
 
+  importSession(opts: {
+    projectId: string
+    threadId: string
+    profile: string | null
+    cwd: string
+    title: string
+    entries: TranscriptEntry[]
+  }): SessionMeta {
+    const project = this.projects.get(opts.projectId)
+    if (!project) throw new Error('Projeto não encontrado')
+    const session: SessionMeta = {
+      id: uid(),
+      projectId: opts.projectId,
+      projectName: project.name,
+      title: opts.title.trim().slice(0, TITLE_MAX) || 'Thread importada',
+      sdkSessionId: opts.threadId,
+      model: null,
+      effort: null,
+      permissionMode: 'bypassPermissions',
+      codebasePath: normalizeCodebase(opts.cwd),
+      profile: opts.profile,
+      open: true,
+      status: 'idle',
+      attention: null,
+      createdAt: now(),
+      updatedAt: now(),
+      lastError: null,
+    }
+    this.sessions.set(session.id, session)
+    this.transcripts.set(session.id, opts.entries)
+    store.saveTranscript(session.id, opts.entries)
+    this.save()
+    this.hub.broadcast({ type: 'session', session })
+    this.hub.broadcast({ type: 'transcript', sessionId: session.id, entries: opts.entries })
+    return session
+  }
+
   sendUserMessage(sessionId: string, text: string, attachments: MsgAttachment[] = []): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
