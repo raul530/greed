@@ -31,7 +31,7 @@ then open http://localhost:5173.
 - import: pull an existing claude code thread in as a card. it resumes the same session in the same folder, so the model keeps the context it already had.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
 - delete: ✕ in history throws a chat away for good, transcript included. it asks first.
-- resizable cards: drag the bottom right corner. width snaps to grid columns so the other cards reflow around it, height is free. the size sticks per chat.
+- resizable cards: drag the bottom right corner. the card takes exactly the size you drag, width and height, and the others move around it while you drag. the size sticks per chat.
 - themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each; on ◐ auto greed follows the os appearance, so it goes light by day and dark at sunset on its own. the button says which mode is on and the swatch in use is ringed.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 

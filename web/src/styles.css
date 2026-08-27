@@ -572,11 +572,11 @@ kbd {
 .grid {
   flex: 1;
   overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 16px;
   padding: 16px;
-  align-content: start;
 }
 
 /* ── card = módulo do schematic ─────────────────────── */
@@ -585,6 +585,10 @@ kbd {
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
+  width: 430px;
+  max-width: 100%;
+  min-width: 300px;
   height: min(46vh, 520px);
   min-height: 260px;
   resize: both;
@@ -600,6 +604,8 @@ kbd {
 .card.expanded {
   position: fixed;
   inset: 20px;
+  width: auto;
+  max-width: none;
   z-index: 50;
   height: auto;
   min-height: 0;
@@ -3397,12 +3403,8 @@ kbd {
 /* ── telas menores ──────────────────────────────────── */
 
 @media (max-width: 920px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-
   .grid > .card {
-    grid-column: 1 / -1 !important;
+    width: 100%;
   }
 
   .usage {
