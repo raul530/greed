@@ -228,6 +228,43 @@ export class SessionManager {
     return session
   }
 
+  importSession(opts: {
+    projectId: string
+    threadId: string
+    profile: string | null
+    cwd: string
+    title: string
+    entries: TranscriptEntry[]
+  }): SessionMeta {
+    const project = this.projects.get(opts.projectId)
+    if (!project) throw new Error('Projeto não encontrado')
+    const session: SessionMeta = {
+      id: uid(),
+      projectId: opts.projectId,
+      projectName: project.name,
+      title: opts.title.trim().slice(0, TITLE_MAX) || 'Thread importada',
+      sdkSessionId: opts.threadId,
+      model: null,
+      effort: null,
+      permissionMode: 'bypassPermissions',
+      codebasePath: normalizeCodebase(opts.cwd),
+      profile: opts.profile,
+      open: true,
+      status: 'idle',
+      attention: null,
+      createdAt: now(),
+      updatedAt: now(),
+      lastError: null,
+    }
+    this.sessions.set(session.id, session)
+    this.transcripts.set(session.id, opts.entries)
+    store.saveTranscript(session.id, opts.entries)
+    this.save()
+    this.hub.broadcast({ type: 'session', session })
+    this.hub.broadcast({ type: 'transcript', sessionId: session.id, entries: opts.entries })
+    return session
+  }
+
   sendUserMessage(sessionId: string, text: string, attachments: MsgAttachment[] = []): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
@@ -464,6 +501,30 @@ export class SessionManager {
     const live = this.live.get(sessionId)
     // trabalhando ou aguardando permissão: continua em background; encerra no fim do turno
     if (live && session.status === 'idle' && live.pending.size === 0) this.endLive(sessionId)
+  }
+
+  deleteSession(sessionId: string): void {
+    if (!this.sessions.has(sessionId)) return
+    const live = this.live.get(sessionId)
+    if (live) {
+      this.rejectAllPending(live, 'Chat apagado.')
+      this.live.delete(sessionId)
+      live.queue.end()
+      live.abort.abort()
+    }
+    const ending = this.ending.get(sessionId)
+    if (ending) {
+      clearTimeout(ending.timer)
+      ending.live.abort.abort()
+      this.ending.delete(sessionId)
+    }
+    this.fleet.dropSession(sessionId)
+    this.btw.delete(sessionId)
+    this.sessions.delete(sessionId)
+    this.transcripts.delete(sessionId)
+    store.deleteTranscript(sessionId)
+    this.save()
+    this.hub.broadcast({ type: 'session_gone', sessionId })
   }
 
   reopenCard(sessionId: string): void {

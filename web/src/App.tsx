@@ -4,6 +4,7 @@ import { api } from './api'
 import { BtwConsole } from './components/BtwConsole'
 import { FleetView } from './components/fleet/FleetView'
 import { HistoryPanel } from './components/HistoryPanel'
+import { ImportModal } from './components/ImportModal'
 import { NewChatModal } from './components/NewChatModal'
 import { ProjectFilter } from './components/ProjectFilter'
 import { ProjectsModal } from './components/ProjectsModal'
@@ -28,10 +29,14 @@ interface ThemePref {
   light: string
 }
 
-const MODE_LABEL: Record<Mode, { icon: string; tip: string }> = {
-  auto: { icon: '◐', tip: 'Tema pelo sistema — clique pra fixar no escuro' },
-  dark: { icon: '☾', tip: 'Fixo no escuro — clique pra fixar no claro' },
-  light: { icon: '☀', tip: 'Fixo no claro — clique pra seguir o sistema' },
+const MODE_LABEL: Record<Mode, { icon: string; label: string; tip: string }> = {
+  auto: {
+    icon: '◐',
+    label: 'auto',
+    tip: 'Seguindo o sistema: claro de dia, escuro ao anoitecer. Clique pra fixar no escuro.',
+  },
+  dark: { icon: '☾', label: 'escuro', tip: 'Fixo no escuro. Clique pra fixar no claro.' },
+  light: { icon: '☀', label: 'claro', tip: 'Fixo no claro. Clique pra seguir o sistema.' },
 }
 
 function loadTheme(): ThemePref {
@@ -79,7 +84,7 @@ function showNotification(msg: Extract<ServerMsg, { type: 'notify' }>) {
 export function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const wsRef = useRef<WSHandle | null>(null)
-  const [modal, setModal] = useState<'none' | 'new' | 'projects'>('none')
+  const [modal, setModal] = useState<'none' | 'new' | 'projects' | 'import'>('none')
   const [view, setView] = useState<View>('board')
   const [historyOpen, setHistoryOpen] = useState(false)
   /** sessão cujo console de /btw está aberto (um por vez) */
@@ -310,13 +315,14 @@ export function App() {
         <div className="topbar-actions">
           <div className="themes">
             <button
-              className="theme-mode"
+              className={`theme-mode ${theme.mode}`}
               data-tip={MODE_LABEL[theme.mode].tip}
               onClick={() =>
                 setTheme((p) => ({ ...p, mode: MODES[(MODES.indexOf(p.mode) + 1) % MODES.length] }))
               }
             >
               {MODE_LABEL[theme.mode].icon}
+              <i>{MODE_LABEL[theme.mode].label}</i>
             </button>
             {[...DARK_THEMES, ...LIGHT_THEMES].map((t) => {
               const light = (LIGHT_THEMES as readonly string[]).includes(t)
@@ -327,11 +333,16 @@ export function App() {
                     'swatch',
                     t,
                     (light ? theme.light : theme.dark) === t ? 'active' : '',
+                    activeTheme === t ? 'live' : '',
                     t === LIGHT_THEMES[0] ? 'group-start' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  data-tip={`${t} — seu tema ${light ? 'claro' : 'escuro'}`}
+                  data-tip={
+                    activeTheme === t
+                      ? `${t} — em uso agora`
+                      : `${t} — seu tema ${light ? 'claro' : 'escuro'}`
+                  }
                   aria-label={`tema ${t}`}
                   onClick={() => setTheme((p) => (light ? { ...p, light: t } : { ...p, dark: t }))}
                 />
@@ -462,6 +473,16 @@ export function App() {
           profiles={profiles.list}
           onClose={() => setModal('none')}
           onManageProjects={() => setModal('projects')}
+          onImport={() => setModal('import')}
+        />
+      )}
+      {modal === 'import' && (
+        <ImportModal
+          projects={state.projects}
+          profiles={profiles.list}
+          defaultProfile={profiles.default}
+          onClose={() => setModal('none')}
+          onBack={() => setModal('new')}
         />
       )}
       {modal === 'projects' && (
@@ -471,6 +492,7 @@ export function App() {
         <HistoryPanel
           sessions={closedSessions}
           onRename={(id, title) => send({ type: 'set_title', sessionId: id, title })}
+          onDelete={(id) => call(api.deleteSession(id))}
           onClose={() => setHistoryOpen(false)}
           onReopen={(id) => {
             call(api.reopenSession(id))

@@ -249,6 +249,11 @@ a.icon:hover {
   background: var(--fill-faint);
 }
 
+button.icon.danger:hover {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+
 kbd {
   font: 10px var(--mono);
   background: var(--sunk);
@@ -445,6 +450,12 @@ kbd {
   outline-offset: 1px;
 }
 
+.swatch.live {
+  outline-color: var(--primary);
+  outline-width: 2px;
+  outline-offset: 2px;
+}
+
 .swatch.orange {
   background: #ff7a18;
 }
@@ -478,9 +489,27 @@ kbd {
 }
 
 .theme-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 6px;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.theme-mode i {
+  font: 9px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.theme-mode.auto {
+  border-color: var(--primary);
+}
+
+.theme-mode.auto i {
+  color: var(--glow);
 }
 
 /* ── filtro de projetos ─────────────────────────────── */
@@ -2389,6 +2418,103 @@ kbd {
   border-radius: var(--r);
   padding: 6px 8px;
   overflow-x: auto;
+}
+
+.import-modal {
+  width: min(680px, 94vw);
+}
+
+.thread-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+}
+
+.thread-list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.thread-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.thread-item:hover {
+  background: var(--fill-faint);
+  color: var(--text);
+}
+
+.thread-item.picked {
+  background: var(--fill-soft);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.thread-item span,
+.thread-item b,
+.thread-item i {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.thread-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.thread-head b {
+  font-size: 12px;
+  color: var(--glow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-head i {
+  flex: none;
+  font: 9px var(--mono);
+  font-style: normal;
+  color: var(--muted);
+}
+
+.thread-cwd {
+  font: 10px var(--mono);
+  color: var(--primary);
+}
+
+.thread-preview {
+  font-size: 11px;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-action {
+  margin-right: auto;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.link-action:hover {
+  color: var(--glow);
+  border-color: var(--edge);
 }
 
 .modal-actions {

@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import type { TranscriptEntry } from '../../../shared/types'
 import { Markdown } from './Markdown'
 
-function Entry({ entry }: { entry: TranscriptEntry }) {
+const Entry = memo(function Entry({ entry }: { entry: TranscriptEntry }) {
   switch (entry.kind) {
     case 'user':
       return (
@@ -74,7 +74,7 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
     default:
       return null
   }
-}
+})
 
 interface Props {
   entries: TranscriptEntry[]

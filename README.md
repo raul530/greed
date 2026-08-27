@@ -28,9 +28,11 @@ then open http://localhost:5173.
 - documents: attach pdf, docx, xlsx, md. text gets extracted and indexed, so a new chat months later knows the docs exist and can read them.
 - per chat: pick model (explicit version), reasoning effort, permission mode (ask, or autonomous by default), and account (which claude subscription pays for it).
 - attachments: paperclip or drag and drop.
+- import: pull an existing claude code thread in as a card. it resumes the same session in the same folder, so the model keeps the context it already had.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
+- delete: ✕ in history throws a chat away for good, transcript included. it asks first.
 - resizable cards: drag the bottom right corner. the card takes exactly the size you drag, width and height, and the others move around it while you drag. the size sticks per chat.
-- themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each, then let ◐ follow the os and switch between them on its own.
+- themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each; on ◐ auto greed follows the os appearance, so it goes light by day and dark at sunset on its own. the button says which mode is on and the swatch in use is ringed.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
 ## accounts (profiles)

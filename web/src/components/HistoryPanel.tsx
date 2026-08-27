@@ -7,6 +7,7 @@ interface Props {
   onClose: () => void
   onReopen: (id: string) => void
   onRename: (id: string, title: string) => void
+  onDelete: (id: string) => void
 }
 
 function when(ts: number): string {
@@ -18,7 +19,7 @@ function when(ts: number): string {
   })
 }
 
-export function HistoryPanel({ sessions, onClose, onReopen, onRename }: Props) {
+export function HistoryPanel({ sessions, onClose, onReopen, onRename, onDelete }: Props) {
   const [editing, setEditing] = useState<string | null>(null)
 
   return (
@@ -64,6 +65,17 @@ export function HistoryPanel({ sessions, onClose, onReopen, onRename }: Props) {
                     </button>
                     <button className="icon" title="Renomear" onClick={() => setEditing(s.id)}>
                       ✎
+                    </button>
+                    <button
+                      className="icon danger"
+                      title="Apagar de vez — leva o transcript junto"
+                      onClick={() => {
+                        if (window.confirm(`Apagar "${s.title}"? O transcript vai junto e não dá pra desfazer.`)) {
+                          onDelete(s.id)
+                        }
+                      }}
+                    >
+                      ✕
                     </button>
                   </>
                 )}
