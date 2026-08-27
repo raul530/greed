@@ -450,6 +450,12 @@ kbd {
   outline-offset: 1px;
 }
 
+.swatch.live {
+  outline-color: var(--primary);
+  outline-width: 2px;
+  outline-offset: 2px;
+}
+
 .swatch.orange {
   background: #ff7a18;
 }
@@ -483,9 +489,27 @@ kbd {
 }
 
 .theme-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 6px;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.theme-mode i {
+  font: 9px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.theme-mode.auto {
+  border-color: var(--primary);
+}
+
+.theme-mode.auto i {
+  color: var(--glow);
 }
 
 /* ── filtro de projetos ─────────────────────────────── */
