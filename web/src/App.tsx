@@ -4,6 +4,7 @@ import { api } from './api'
 import { BtwConsole } from './components/BtwConsole'
 import { FleetView } from './components/fleet/FleetView'
 import { HistoryPanel } from './components/HistoryPanel'
+import { ImportModal } from './components/ImportModal'
 import { NewChatModal } from './components/NewChatModal'
 import { ProjectFilter } from './components/ProjectFilter'
 import { ProjectsModal } from './components/ProjectsModal'
@@ -79,7 +80,7 @@ function showNotification(msg: Extract<ServerMsg, { type: 'notify' }>) {
 export function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const wsRef = useRef<WSHandle | null>(null)
-  const [modal, setModal] = useState<'none' | 'new' | 'projects'>('none')
+  const [modal, setModal] = useState<'none' | 'new' | 'projects' | 'import'>('none')
   const [view, setView] = useState<View>('board')
   const [historyOpen, setHistoryOpen] = useState(false)
   /** sessão cujo console de /btw está aberto (um por vez) */
@@ -462,6 +463,16 @@ export function App() {
           profiles={profiles.list}
           onClose={() => setModal('none')}
           onManageProjects={() => setModal('projects')}
+          onImport={() => setModal('import')}
+        />
+      )}
+      {modal === 'import' && (
+        <ImportModal
+          projects={state.projects}
+          profiles={profiles.list}
+          defaultProfile={profiles.default}
+          onClose={() => setModal('none')}
+          onBack={() => setModal('new')}
         />
       )}
       {modal === 'projects' && (

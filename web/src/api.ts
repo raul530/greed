@@ -1,5 +1,6 @@
 import type {
   BtwExchange,
+  ClaudeThread,
   InsightsReport,
   MsgAttachment,
   Profile,
@@ -82,6 +83,15 @@ export const api = {
         profile,
         attachments,
       }),
+    }),
+  threads: (profile: string | null, limit = 200) =>
+    j<{ threads: ClaudeThread[] }>(
+      `/api/threads?limit=${limit}${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`,
+    ),
+  importThread: (threadId: string, profile: string | null, projectId: string) =>
+    j<SessionMeta>('/api/sessions/import', {
+      method: 'POST',
+      body: JSON.stringify({ threadId, profile, projectId }),
     }),
   profiles: () => j<{ profiles: Profile[]; default: string | null }>('/api/profiles'),
   closeSession: (id: string) =>

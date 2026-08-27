@@ -14,6 +14,15 @@ export interface Profile {
   name: string
 }
 
+export interface ClaudeThread {
+  id: string
+  profile: string
+  cwd: string
+  title: string
+  preview: string
+  updatedAt: number
+}
+
 export type CardStatus = 'idle' | 'working' | 'waiting'
 export type Attention = 'finished' | 'waiting' | null
 

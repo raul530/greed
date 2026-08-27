@@ -11,6 +11,7 @@ import { buildInsights } from './insights'
 import { SessionManager } from './manager'
 import { warmMemory } from './memory'
 import { defaultProfileDir, listProfiles } from './profiles'
+import { describeThread, findThreadFile, listThreads, readThreadEntries } from './threads'
 import { ProjectRegistry } from './projects'
 import { store } from './store'
 import { fetchUsage, lastKnownUsage, POLL_MS, startUsagePoller } from './usage'
@@ -207,6 +208,40 @@ app.delete('/api/projects/:id', (req, res) => {
 
 app.get('/api/profiles', (_req, res) => {
   res.json({ profiles: listProfiles(), default: defaultProfileDir() })
+})
+
+app.get('/api/threads', (req, res) => {
+  const raw = req.query.profile ? String(req.query.profile) : null
+  const profile = raw && listProfiles().some((p) => p.dir === raw) ? raw : null
+  const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 200)
+  res.json({ threads: listThreads(profile, limit) })
+})
+
+app.post('/api/sessions/import', async (req, res) => {
+  try {
+    const { threadId, profile, projectId } = (req.body ?? {}) as {
+      threadId?: string
+      profile?: string | null
+      projectId?: string
+    }
+    const dir = profile && listProfiles().some((p) => p.dir === profile) ? profile : defaultProfileDir()
+    if (!dir) throw new Error('Nenhum perfil do Claude encontrado')
+    const file = findThreadFile(dir, String(threadId ?? ''))
+    if (!file) throw new Error('Thread não encontrada nesse perfil')
+    const { cwd, title } = describeThread(file)
+    const entries = await readThreadEntries(file)
+    const session = manager.importSession({
+      projectId: String(projectId ?? ''),
+      threadId: String(threadId),
+      profile: dir,
+      cwd,
+      title,
+      entries,
+    })
+    res.json(session)
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
 })
 
 app.post('/api/sessions', (req, res) => {

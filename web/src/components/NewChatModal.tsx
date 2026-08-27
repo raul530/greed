@@ -15,9 +15,10 @@ interface Props {
   profiles: Profile[]
   onClose: () => void
   onManageProjects: () => void
+  onImport: () => void
 }
 
-export function NewChatModal({ projects, profiles, onClose, onManageProjects }: Props) {
+export function NewChatModal({ projects, profiles, onClose, onManageProjects, onImport }: Props) {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
@@ -276,6 +277,9 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects }: 
             </label>
             {error && <div className="modal-error">{error}</div>}
             <div className="modal-actions">
+              <button className="link-action" onClick={onImport}>
+                Importar thread do Claude
+              </button>
               <button onClick={onClose}>Cancelar</button>
               <button className="primary" disabled={!canSubmit} onClick={() => void submit()}>
                 {busy ? 'Abrindo…' : att.uploading ? 'Anexando…' : 'Iniciar (⌘⏎)'}
