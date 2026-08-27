@@ -96,6 +96,8 @@ export const api = {
   profiles: () => j<{ profiles: Profile[]; default: string | null }>('/api/profiles'),
   closeSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/close`, { method: 'POST' }),
+  deleteSession: (id: string) =>
+    j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   reopenSession: (id: string) =>
     j<{ ok: true }>(`/api/sessions/${encodeURIComponent(id)}/reopen`, { method: 'POST' }),
   // slash commands que valem nesta sessão (Claude Code + os do Greed)

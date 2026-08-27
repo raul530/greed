@@ -91,6 +91,21 @@ export function reducer(state: ClientState, action: Action): ClientState {
       return { ...state, projects: msg.projects }
     case 'session':
       return { ...state, sessions: { ...state.sessions, [msg.session.id]: msg.session } }
+    case 'session_gone': {
+      const drop = <T,>(rec: Record<string, T>): Record<string, T> => {
+        const next = { ...rec }
+        delete next[msg.sessionId]
+        return next
+      }
+      return {
+        ...state,
+        sessions: drop(state.sessions),
+        transcripts: drop(state.transcripts),
+        permissions: drop(state.permissions),
+        activity: drop(state.activity),
+        btw: drop(state.btw),
+      }
+    }
     case 'transcript':
       return { ...state, transcripts: { ...state.transcripts, [msg.sessionId]: msg.entries } }
     case 'entry': {

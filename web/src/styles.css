@@ -249,6 +249,11 @@ a.icon:hover {
   background: var(--fill-faint);
 }
 
+button.icon.danger:hover {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+
 kbd {
   font: 10px var(--mono);
   background: var(--sunk);

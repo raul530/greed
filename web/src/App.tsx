@@ -482,6 +482,7 @@ export function App() {
         <HistoryPanel
           sessions={closedSessions}
           onRename={(id, title) => send({ type: 'set_title', sessionId: id, title })}
+          onDelete={(id) => call(api.deleteSession(id))}
           onClose={() => setHistoryOpen(false)}
           onReopen={(id) => {
             call(api.reopenSession(id))
