@@ -1572,6 +1572,14 @@ kbd {
   color: var(--muted);
 }
 
+/* alternar entre a leva do último turno e tudo que o chat já gerou */
+.prev-chip.all {
+  flex: none;
+  align-self: flex-start;
+  border-style: dashed;
+  color: var(--muted);
+}
+
 /* dispensar o trilho: alvo próprio dentro do botão do trilho */
 .prev-rail-x {
   flex: none;
