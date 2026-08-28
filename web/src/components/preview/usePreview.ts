@@ -5,6 +5,8 @@ import type { SessionMeta } from '../../../../shared/types'
 export interface PreviewFile {
   rel: string
   mtime: number
+  /** qual pasta da sessão (codebase ou projeto) tem esse arquivo */
+  root: number
 }
 
 const hideKey = (sessionId: string) => `greed:previewHidden:${sessionId}`
@@ -67,5 +69,8 @@ export function usePreview(sessionId: string, status: SessionMeta['status']) {
   return { files, nonce, hidden, hide, reload: load }
 }
 
-export const previewUrl = (sessionId: string, rel: string, nonce: number) =>
-  `/preview/${encodeURIComponent(sessionId)}/${rel.split('/').map(encodeURIComponent).join('/')}?v=${nonce}`
+export const previewUrl = (sessionId: string, file: PreviewFile, nonce: number) =>
+  `/preview/${encodeURIComponent(sessionId)}/${file.rel.split('/').map(encodeURIComponent).join('/')}?v=${nonce}&root=${file.root ?? 0}`
+
+/** chave estável de um arquivo: o mesmo rel pode existir nas duas pastas */
+export const fileKey = (f: PreviewFile) => `${f.root ?? 0}:${f.rel}`

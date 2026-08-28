@@ -30,6 +30,7 @@ import { loadProjectMcpServers } from './mcp'
 import { captureTurn, memoryTools, renderMemory } from './memory'
 import { envForProfile } from './profiles'
 import type { ProjectRegistry } from './projects'
+import { findAllFiles, PREVIEW_EXT, PREVIEW_MAX } from './preview'
 import { store } from './store'
 import { fallbackTitle, generateTitle } from './titles'
 import { now, summarizeToolInput, toolTarget, truncate, uid } from './util'
@@ -52,6 +53,10 @@ const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
 const TITLE_MAX = 120
 /** quantas perguntas de canto ficam guardadas por sessão */
 const BTW_KEEP = 30
+/** cache em data/: quais entregáveis saíram de qual chat */
+const AUTHORED = 'authored'
+/** teto de arquivos lembrados por chat (o preview só mostra 40 mesmo) */
+const AUTHORED_KEEP = 200
 function normalizePermMode(mode?: string): string {
   return mode && PERM_MODES.has(mode) ? mode : 'default'
 }
@@ -67,6 +72,36 @@ function normalizeCodebase(input?: string | null): string | null {
   } catch {
     return null
   }
+}
+
+/** Mantém só os N mais recentes (a inserção é em ordem, então corta pela frente). */
+function trimSet(set: Set<string>, max: number): Set<string> {
+  if (set.size <= max) return set
+  return new Set([...set].slice(set.size - max))
+}
+
+const WRITER_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+/** No shell, só o destino declarado conta: `> arq`, `-o arq`, `tee arq`. */
+const SHELL_OUT =
+  /(?:>>?|\B-o\s|--output[=\s]|--print-to-pdf=|\btee\s)\s*("[^"]+"|'[^']+'|[^\s;|&"']+)/g
+
+/**
+ * Caminhos que uma tool escreveu, lidos do resumo guardado no transcript. Ler um
+ * arquivo não é autoria: quem só deu `cat` num .md não fica dono dele.
+ */
+function writtenPaths(toolName: string, summary: string): string[] {
+  const text = summary.replace(/…$/, '')
+  if (WRITER_TOOLS.has(toolName)) {
+    const m = /^(?:file_path|notebook_path|path):\s*(.+)$/.exec(text)
+    return m ? [m[1].trim()] : []
+  }
+  if (toolName !== 'Bash') return []
+  const out: string[] = []
+  for (const m of text.matchAll(SHELL_OUT)) {
+    const cand = m[1].replace(/^["']|["']$/g, '')
+    if (PREVIEW_EXT.test(cand)) out.push(cand)
+  }
+  return out
 }
 
 /** Fila async que alimenta o modo de input streaming do SDK. */
@@ -131,6 +166,10 @@ export class SessionManager {
   private ending = new Map<string, { live: LiveSession; timer: NodeJS.Timeout }>()
   /** diário de bordo da frota: sobrevive ao fim do turno, ao contrário da árvore de atividade */
   private fleet = new FleetLog((msg) => this.hub.broadcast(msg))
+  /** entregáveis que cada chat produziu (caminho absoluto) — o preview mostra só os seus */
+  private authored = new Map<string, Set<string>>()
+  /** início do turno em curso: o que mexer daí pra frente é obra deste chat */
+  private turnStart = new Map<string, number>()
 
   constructor(
     private hub: Hub,
@@ -145,6 +184,9 @@ export class SessionManager {
       s.codebasePath = s.codebasePath ?? null
       s.profile = s.profile ?? null
       this.sessions.set(s.id, s)
+    }
+    for (const [id, files] of Object.entries(store.read<Record<string, string[]>>(AUTHORED, {}))) {
+      if (this.sessions.has(id)) this.authored.set(id, new Set(files))
     }
   }
 
@@ -292,6 +334,7 @@ export class SessionManager {
     const live = existing ?? this.startLive(session)
     if (!live) return
     live.turnSeq += 1
+    this.turnStart.set(sessionId, now())
     live.queue.push({
       type: 'user',
       message: { role: 'user', content: forModel },
@@ -377,11 +420,102 @@ export class SessionManager {
     return this.btw.get(sessionId) ?? []
   }
 
-  /** raiz do preview: a mesma pasta onde o agente escreve (codebase ou projeto). */
+  /** cwd da sessão: a pasta onde o agente roda (codebase ou projeto). */
   previewRootForSession(sessionId: string): string | null {
     const session = this.sessions.get(sessionId)
     if (!session) return null
     return session.codebasePath ?? this.projects.get(session.projectId)?.path ?? null
+  }
+
+  /**
+   * Pastas que o preview varre. Com codebase o cwd é o repo, mas a pasta do
+   * projeto vai junto em additionalDirectories — e é lá que ele costuma largar
+   * o entregável (pdf, html). Varrer só o cwd sumia com esses arquivos.
+   * A ordem é estável: o índice vira o `root` da URL do preview.
+   */
+  previewRootsForSession(sessionId: string): string[] {
+    const session = this.sessions.get(sessionId)
+    if (!session) return []
+    const projectPath = this.projects.get(session.projectId)?.path ?? null
+    const roots = [session.codebasePath, projectPath]
+      .filter((p): p is string => typeof p === 'string' && p.length > 0)
+      .map((p) => path.resolve(p))
+    // uma pasta dentro da outra já é varrida pela de fora: não repete
+    return roots.filter(
+      (p, i) => roots.indexOf(p) === i && !roots.slice(0, i).some((o) => p.startsWith(o + path.sep)),
+    )
+  }
+
+  /**
+   * Entregáveis deste chat, mais recente primeiro. A pasta é do projeto e vários
+   * chats dividem ela — sem este filtro o mesmo .md aparecia na barra de todos.
+   */
+  previewFilesForSession(sessionId: string): { rel: string; mtime: number; root: number }[] {
+    const roots = this.previewRootsForSession(sessionId)
+    if (roots.length === 0) return []
+    const mine = this.authoredFor(sessionId)
+    return findAllFiles(roots)
+      .filter((f) => f.abs && mine.has(f.abs))
+      .slice(0, PREVIEW_MAX)
+      .map(({ rel, mtime, root }) => ({ rel, mtime, root }))
+  }
+
+  /**
+   * Fecha o turno anotando o que mudou nas pastas da sessão desde que ele
+   * começou. É por mtime, não por tool: pega tanto o Write quanto o pdf que
+   * saiu de um script no Bash, que é como a maioria dos entregáveis nasce.
+   */
+  private recordAuthored(sessionId: string): void {
+    const since = this.turnStart.get(sessionId)
+    this.turnStart.delete(sessionId)
+    if (!since) return
+    const roots = this.previewRootsForSession(sessionId)
+    if (roots.length === 0) return
+    const mine = this.authoredFor(sessionId)
+    const before = mine.size
+    for (const f of findAllFiles(roots)) {
+      if (f.abs && f.mtime >= since) mine.add(f.abs)
+    }
+    if (mine.size === before) return
+    this.authored.set(sessionId, trimSet(mine, AUTHORED_KEEP))
+    this.saveAuthored()
+  }
+
+  /** Lista do chat, com a primeira leitura reconstruída do transcript. */
+  private authoredFor(sessionId: string): Set<string> {
+    const known = this.authored.get(sessionId)
+    if (known) return known
+    const seeded = this.authoredFromTranscript(sessionId)
+    this.authored.set(sessionId, seeded)
+    return seeded
+  }
+
+  /**
+   * Chats de antes desta anotação não têm histórico de mtime, então a lista sai
+   * do transcript: caminho de Write/Edit e o destino dos comandos que gravam.
+   */
+  private authoredFromTranscript(sessionId: string): Set<string> {
+    const roots = this.previewRootsForSession(sessionId)
+    const out = new Set<string>()
+    for (const e of this.transcript(sessionId)) {
+      if (e.kind !== 'tool' || !e.summary) continue
+      for (const cand of writtenPaths(e.name, e.summary)) {
+        for (const root of roots) {
+          const abs = path.resolve(root, cand)
+          if (!abs.startsWith(root + path.sep)) continue
+          if (fs.existsSync(abs)) out.add(abs)
+        }
+      }
+    }
+    return out
+  }
+
+  private saveAuthored(): void {
+    const out: Record<string, string[]> = {}
+    for (const [id, files] of this.authored) {
+      if (files.size > 0 && this.sessions.has(id)) out[id] = [...files]
+    }
+    store.write(AUTHORED, out)
   }
 
   /** ingesta um anexo salvo na base de conhecimento do projeto (extrai texto + indexa). */
@@ -522,6 +656,8 @@ export class SessionManager {
     this.btw.delete(sessionId)
     this.sessions.delete(sessionId)
     this.transcripts.delete(sessionId)
+    this.turnStart.delete(sessionId)
+    if (this.authored.delete(sessionId)) this.saveAuthored()
     store.deleteTranscript(sessionId)
     this.save()
     this.hub.broadcast({ type: 'session_gone', sessionId })
@@ -1040,6 +1176,7 @@ export class SessionManager {
           }
         }
         this.clearActivity(sessionId, live)
+        this.recordAuthored(sessionId)
         this.fleet.endRun(sessionId, msg.subtype === 'success' ? 'ok' : 'error')
         if (msg.subtype !== 'success') {
           const detail =
