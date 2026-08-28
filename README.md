@@ -33,6 +33,8 @@ then open http://localhost:5173.
 - delete: ✕ in history throws a chat away for good, transcript included. it asks first.
 - resizable cards: drag the bottom right corner. the card takes exactly the size you drag, width and height, and the others move around it while you drag. the size sticks per chat.
 - themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each; on ◐ auto greed follows the os appearance, so it goes light by day and dark at sunset on its own. the button says which mode is on and the swatch in use is ringed.
+- deliverables: the bar under each card lists what that chat just wrote (html, md, pdf, svg, csv, txt) and opens it in a 16:9 preview you can resize, reload and download. by default it shows only the batch from the last turn, so asking for a v2 shows the v2; `tudo N` opens everything the chat ever produced. the list is per chat, not per folder, even when several chats share a project.
+- finder tag: on macos every file a chat creates gets tagged `greed` (yellow), so they are one click away in the finder sidebar and in `mdfind "kMDItemUserTags == 'greed'"`. existing tags on a file are kept. rename it with `GREED_FINDER_TAG`, or set it empty to turn it off. no-op on other systems.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
 
 ## accounts (profiles)

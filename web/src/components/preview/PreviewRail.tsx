@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { fileKey, type PreviewFile } from './usePreview'
 
 interface Props {
@@ -10,7 +11,9 @@ interface Props {
 }
 
 /** Quantos nomes cabem na barra antes de virar "+N". */
-const CHIPS = 3
+const CHIPS = 4
+/** No modo "tudo" a barra pode crescer, mas não virar uma lista sem fim. */
+const CHIPS_ALL = 12
 
 /** Nome curto, cortado no meio: o que separa dois entregáveis costuma ser o fim
  *  do nome (`-v2`, `-final`), então cortar só no fim deixaria os dois iguais. */
@@ -20,11 +23,25 @@ function shortName(rel: string, max = 22): string {
   return `${name.slice(0, max - 10)}…${name.slice(-9)}`
 }
 
-/** Trilho fino: um chip por entregável deste chat, o mais novo primeiro. */
+/**
+ * Trilho fino: por padrão só o que saiu do último turno — pediu o v2, aparece o
+ * v2. O botão da direita abre a lista inteira do chat.
+ */
 export function PreviewRail({ files, openKey, hidden, onOpen, onHide }: Props) {
+  const [all, setAll] = useState(false)
+  const fromTurn = files.filter((f) => f.last)
+  // turno novo com entregável novo: volta pro modo "só o que ele acabou de fazer"
+  const turnKey = fromTurn.map(fileKey).join('|')
+  useEffect(() => setAll(false), [turnKey])
+
   if (files.length === 0 || hidden) return null
-  const shown = files.slice(0, CHIPS)
-  const rest = files.slice(CHIPS)
+  // chat antigo sem leva marcada: mostra tudo, senão a barra ficaria vazia
+  const list = all || fromTurn.length === 0 ? files : fromTurn
+  const cap = all ? CHIPS_ALL : CHIPS
+  const shown = list.slice(0, cap)
+  const rest = list.slice(cap)
+  const older = files.length - fromTurn.length
+
   return (
     <div className={`act-rail prev-rail ${openKey ? 'open' : ''}`}>
       <span className="prev-rail-eye">▣</span>
@@ -49,6 +66,19 @@ export function PreviewRail({ files, openKey, hidden, onOpen, onHide }: Props) {
           </button>
         )}
       </span>
+      {older > 0 && (
+        <button
+          className={`prev-chip all ${all ? 'on' : ''}`}
+          onClick={() => setAll((v) => !v)}
+          data-tip={
+            all
+              ? 'Voltar a mostrar só o que saiu do último turno'
+              : `Mostrar os ${files.length} arquivos que este chat já gerou`
+          }
+        >
+          {all ? 'último turno' : `tudo ${files.length}`}
+        </button>
+      )}
       <button
         className="prev-rail-x"
         data-tip="Some com esta barra — ela volta quando ele mexer no arquivo de novo"
