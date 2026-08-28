@@ -1518,6 +1518,60 @@ kbd {
   font-size: 10px;
 }
 
+/* o trilho não é mais um botão só: cada entregável tem o seu alvo */
+.prev-rail {
+  align-items: flex-start;
+  cursor: default;
+}
+
+.prev-rail:hover {
+  background: var(--sunk);
+}
+
+.prev-rail-files {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.prev-chip {
+  flex: none;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--text);
+  font: 11px var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.prev-chip:hover {
+  border-color: var(--primary);
+  color: var(--glow);
+  background: var(--fill-faint);
+}
+
+.prev-chip.on {
+  border-color: var(--primary);
+  color: var(--glow);
+  background: var(--fill-soft);
+}
+
+/* o "+N" é curto e não deve encolher junto com os nomes */
+.prev-chip.more {
+  flex: none;
+  color: var(--muted);
+}
+
 /* dispensar o trilho: alvo próprio dentro do botão do trilho */
 .prev-rail-x {
   flex: none;
@@ -1527,8 +1581,11 @@ kbd {
   width: 20px;
   height: 20px;
   margin: -4px -6px -4px 0;
+  border: none;
   border-radius: var(--r);
+  background: transparent;
   color: var(--edge);
+  font: 11px var(--mono);
   cursor: pointer;
 }
 
@@ -1684,6 +1741,24 @@ kbd {
   max-width: 100%;
   border: 0;
   background: #fff;
+}
+
+/* navegador sem leitor de PDF: em vez da tela branca, os dois caminhos de saída */
+.prev-nopdf {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 12px/1.6 var(--mono);
+  color: var(--muted);
+  background: var(--card);
+  text-align: center;
+}
+
+.prev-nopdf a {
+  color: var(--primary);
 }
 
 /* .md e texto puro: lidos aqui dentro, no tema do HUD */

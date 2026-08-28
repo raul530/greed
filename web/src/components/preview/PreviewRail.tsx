@@ -1,50 +1,61 @@
-import type { PreviewFile } from './usePreview'
+import { fileKey, type PreviewFile } from './usePreview'
 
 interface Props {
   files: PreviewFile[]
-  open: boolean
+  /** chave do arquivo aberto no momento, ou null com o painel fechado */
+  openKey: string | null
   hidden: boolean
-  onToggle: () => void
+  onOpen: (file: PreviewFile) => void
   onHide: () => void
 }
 
-/** Trilho fino, no mesmo lugar e peso do trilho de atividade. Some se não há html. */
-export function PreviewRail({ files, open, hidden, onToggle, onHide }: Props) {
+/** Quantos nomes cabem na barra antes de virar "+N". */
+const CHIPS = 3
+
+/** Nome curto, cortado no meio: o que separa dois entregáveis costuma ser o fim
+ *  do nome (`-v2`, `-final`), então cortar só no fim deixaria os dois iguais. */
+function shortName(rel: string, max = 22): string {
+  const name = rel.split('/').pop() ?? rel
+  if (name.length <= max) return name
+  return `${name.slice(0, max - 10)}…${name.slice(-9)}`
+}
+
+/** Trilho fino: um chip por entregável deste chat, o mais novo primeiro. */
+export function PreviewRail({ files, openKey, hidden, onOpen, onHide }: Props) {
   if (files.length === 0 || hidden) return null
-  const head = files[0].rel
+  const shown = files.slice(0, CHIPS)
+  const rest = files.slice(CHIPS)
   return (
-    <button
-      className={`act-rail prev-rail ${open ? 'open' : ''}`}
-      onClick={onToggle}
-      data-tip={
-        files.length > 1
-          ? `Abrir o preview — ${files.length} arquivos html nesta pasta`
-          : 'Abrir o preview deste html em tela grande'
-      }
-    >
+    <div className={`act-rail prev-rail ${openKey ? 'open' : ''}`}>
       <span className="prev-rail-eye">▣</span>
-      <span className="act-rail-head">{head}</span>
-      {files.length > 1 && <span className="act-rail-counts">+{files.length - 1}</span>}
-      <span className="act-rail-chev">{open ? '▾' : '▸'}</span>
-      <span
+      <span className="prev-rail-files">
+        {shown.map((f) => (
+          <button
+            key={fileKey(f)}
+            className={`prev-chip ${openKey === fileKey(f) ? 'on' : ''}`}
+            onClick={() => onOpen(f)}
+            data-tip={`Abrir ${f.rel} em tela grande`}
+          >
+            {shortName(f.rel)}
+          </button>
+        ))}
+        {rest.length > 0 && (
+          <button
+            className="prev-chip more"
+            onClick={() => onOpen(rest[0])}
+            data-tip={`Mais ${rest.length}: ${rest.map((f) => f.rel).join(', ')}`}
+          >
+            +{rest.length}
+          </button>
+        )}
+      </span>
+      <button
         className="prev-rail-x"
-        role="button"
-        tabIndex={0}
         data-tip="Some com esta barra — ela volta quando ele mexer no arquivo de novo"
-        onClick={(e) => {
-          e.stopPropagation()
-          onHide()
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            e.stopPropagation()
-            onHide()
-          }
-        }}
+        onClick={onHide}
       >
         ✕
-      </span>
-    </button>
+      </button>
+    </div>
   )
 }

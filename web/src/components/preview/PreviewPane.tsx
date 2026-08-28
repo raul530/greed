@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Markdown } from '../Markdown'
-import { previewUrl, type PreviewFile } from './usePreview'
+import { fileKey, previewUrl, type PreviewFile } from './usePreview'
 
 interface Props {
   sessionId: string
   title: string
   files: PreviewFile[]
+  /** arquivo escolhido no trilho — muda enquanto o painel está aberto */
+  initial: string
   nonce: number
   onReload: () => void
   onClose: () => void
@@ -18,20 +20,24 @@ const WIDTHS = [
   { label: '1280', value: 1280, tip: 'Desktop — 1280px' },
 ]
 
-type Kind = 'page' | 'markdown' | 'text'
+type Kind = 'page' | 'pdf' | 'markdown' | 'text'
 
 function kindOf(rel: string): Kind {
   const ext = rel.split('.').pop()?.toLowerCase() ?? ''
-  if (ext === 'html' || ext === 'htm' || ext === 'svg' || ext === 'pdf') return 'page'
+  if (ext === 'pdf') return 'pdf'
+  if (ext === 'html' || ext === 'htm' || ext === 'svg') return 'page'
   if (ext === 'md' || ext === 'markdown') return 'markdown'
   return 'text'
 }
 
 /** Modal grande (16:9) pra testar o html de verdade, ler um .md e baixar o arquivo. */
-export function PreviewPane({ sessionId, title, files, nonce, onReload, onClose }: Props) {
-  const [rel, setRel] = useState(files[0]?.rel ?? '')
+export function PreviewPane({ sessionId, title, files, initial, nonce, onReload, onClose }: Props) {
+  const [key, setKey] = useState(initial)
   const [width, setWidth] = useState(0)
   const [text, setText] = useState<string | null>(null)
+
+  // clicou noutro chip do trilho com o painel aberto: troca o arquivo
+  useEffect(() => setKey(initial), [initial])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -40,13 +46,14 @@ export function PreviewPane({ sessionId, title, files, nonce, onReload, onClose 
   }, [onClose])
 
   // arquivo escolhido sumiu (renomeado pelo agente): volta pro mais recente
-  const current = files.some((f) => f.rel === rel) ? rel : (files[0]?.rel ?? '')
-  const url = current ? previewUrl(sessionId, current, nonce) : ''
+  const file = files.find((f) => fileKey(f) === key) ?? files[0]
+  const current = file?.rel ?? ''
+  const url = file ? previewUrl(sessionId, file, nonce) : ''
   const kind = current ? kindOf(current) : 'page'
 
   // markdown e texto a gente mesmo renderiza; html vai pro iframe
   useEffect(() => {
-    if (!url || kind === 'page') {
+    if (!url || kind === 'page' || kind === 'pdf') {
       setText(null)
       return
     }
@@ -76,12 +83,12 @@ export function PreviewPane({ sessionId, title, files, nonce, onReload, onClose 
           {files.length > 1 ? (
             <select
               className="prev-file"
-              value={current}
-              onChange={(e) => setRel(e.target.value)}
+              value={file ? fileKey(file) : ''}
+              onChange={(e) => setKey(e.target.value)}
               data-tip="Qual arquivo abrir (mais recente primeiro)"
             >
               {files.map((f) => (
-                <option key={f.rel} value={f.rel}>
+                <option key={fileKey(f)} value={fileKey(f)}>
                   {f.rel}
                 </option>
               ))}
@@ -131,9 +138,27 @@ export function PreviewPane({ sessionId, title, files, nonce, onReload, onClose 
             </button>
           </div>
         </div>
-        <div className={`prev-stage ${kind !== 'page' ? 'doc' : ''}`}>
+        <div className={`prev-stage ${kind === 'markdown' || kind === 'text' ? 'doc' : ''}`}>
           {!url ? (
             <div className="act-empty">Nenhum arquivo pra mostrar nesta sessão ainda.</div>
+          ) : kind === 'pdf' ? (
+            // pdf não vai em iframe sandbox: sem same-origin o leitor nativo do
+            // Chrome abre em branco. <object> ainda cai no aviso abaixo quando o
+            // navegador não tem leitor embutido — melhor que uma tela branca.
+            <object key={url} className="prev-frame" data={url} type="application/pdf">
+              <div className="prev-nopdf">
+                <p>Este navegador não abre PDF aqui dentro.</p>
+                <p>
+                  <a href={url} target="_blank" rel="noopener noreferrer">
+                    abrir numa aba ↗
+                  </a>
+                  {' · '}
+                  <a href={`${url}&download=1`} download={fileName}>
+                    baixar ⤓
+                  </a>
+                </p>
+              </div>
+            </object>
           ) : kind === 'page' ? (
             <iframe
               key={url}

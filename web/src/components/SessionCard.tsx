@@ -23,7 +23,7 @@ import { InlineEdit } from './InlineEdit'
 import { PermissionDock } from './PermissionDock'
 import { PreviewPane } from './preview/PreviewPane'
 import { PreviewRail } from './preview/PreviewRail'
-import { usePreview } from './preview/usePreview'
+import { fileKey, usePreview } from './preview/usePreview'
 import { Transcript } from './Transcript'
 import { AttachChips, useAttachments } from './useAttachments'
 import { useCardSize } from './useCardSize'
@@ -66,7 +66,8 @@ export function SessionCard(props: Props) {
   const { draft, setDraft, stale, onBlur, clear: clearDraft } = useDraft(session.id)
   const [dragging, setDragging] = useState(false)
   const [treeOpen, setTreeOpen] = useState(false)
-  const [prevOpen, setPrevOpen] = useState(false)
+  /** chave do arquivo aberto no preview (null = painel fechado) */
+  const [prevOpen, setPrevOpen] = useState<string | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
   const [renaming, setRenaming] = useState(false)
   const act = useActivity(props.activity)
@@ -102,7 +103,8 @@ export function SessionCard(props: Props) {
       return
     }
     if (head === '/preview') {
-      setPrevOpen(true)
+      // sem argumento o /preview abre o entregável mais recente do chat
+      if (prev.files[0]) setPrevOpen(fileKey(prev.files[0]))
       clearDraft()
       return
     }
@@ -296,12 +298,12 @@ export function SessionCard(props: Props) {
       </div>
       <PreviewRail
         files={prev.files}
-        open={prevOpen}
+        openKey={prevOpen}
         hidden={prev.hidden}
-        onToggle={() => setPrevOpen((v) => !v)}
+        onOpen={(f) => setPrevOpen((cur) => (cur === fileKey(f) ? null : fileKey(f)))}
         onHide={() => {
           prev.hide()
-          setPrevOpen(false)
+          setPrevOpen(null)
         }}
       />
       <ActivityRail
@@ -417,9 +419,10 @@ export function SessionCard(props: Props) {
           sessionId={session.id}
           title={`${session.projectName} — ${session.title}`}
           files={prev.files}
+          initial={prevOpen}
           nonce={prev.nonce}
           onReload={prev.reload}
-          onClose={() => setPrevOpen(false)}
+          onClose={() => setPrevOpen(null)}
         />
       )}
       <span className="card-grip" aria-hidden="true" />
