@@ -32,6 +32,7 @@ import { envForProfile } from './profiles'
 import type { ProjectRegistry } from './projects'
 import { findAllFiles, PREVIEW_EXT, PREVIEW_MAX } from './preview'
 import { store } from './store'
+import { tagAsGreed } from './tags'
 import { fallbackTitle, generateTitle } from './titles'
 import { now, summarizeToolInput, toolTarget, truncate, uid } from './util'
 
@@ -57,6 +58,8 @@ const BTW_KEEP = 30
 const AUTHORED = 'authored'
 /** teto de arquivos lembrados por chat (o preview só mostra 40 mesmo) */
 const AUTHORED_KEEP = 200
+/** sem turno pra separar (chat antigo), arquivos escritos neste intervalo contam como a mesma leva */
+const SAME_BATCH_MS = 10 * 60 * 1000
 function normalizePermMode(mode?: string): string {
   return mode && PERM_MODES.has(mode) ? mode : 'default'
 }
@@ -71,6 +74,14 @@ function normalizeCodebase(input?: string | null): string | null {
     return fs.statSync(p).isDirectory() ? p : null
   } catch {
     return null
+  }
+}
+
+function mtimeOf(file: string): number {
+  try {
+    return fs.statSync(file).mtimeMs
+  } catch {
+    return 0
   }
 }
 
@@ -166,8 +177,12 @@ export class SessionManager {
   private ending = new Map<string, { live: LiveSession; timer: NodeJS.Timeout }>()
   /** diário de bordo da frota: sobrevive ao fim do turno, ao contrário da árvore de atividade */
   private fleet = new FleetLog((msg) => this.hub.broadcast(msg))
-  /** entregáveis que cada chat produziu (caminho absoluto) — o preview mostra só os seus */
-  private authored = new Map<string, Set<string>>()
+  /**
+   * Entregáveis de cada chat (caminho absoluto): `files` é tudo que ele já
+   * produziu, `last` é a leva do último turno que produziu alguma coisa — é ela
+   * que a barra mostra, pra ver o v2 sem o v1 e o v0 junto.
+   */
+  private authored = new Map<string, { files: Set<string>; last: string[] }>()
   /** início do turno em curso: o que mexer daí pra frente é obra deste chat */
   private turnStart = new Map<string, number>()
 
@@ -185,8 +200,13 @@ export class SessionManager {
       s.profile = s.profile ?? null
       this.sessions.set(s.id, s)
     }
-    for (const [id, files] of Object.entries(store.read<Record<string, string[]>>(AUTHORED, {}))) {
-      if (this.sessions.has(id)) this.authored.set(id, new Set(files))
+    const saved = store.read<Record<string, { files?: string[]; last?: string[] }>>(AUTHORED, {})
+    for (const [id, rec] of Object.entries(saved)) {
+      if (!this.sessions.has(id) || !Array.isArray(rec?.files)) continue
+      this.authored.set(id, {
+        files: new Set(rec.files),
+        last: Array.isArray(rec.last) ? rec.last : [],
+      })
     }
   }
 
@@ -449,15 +469,20 @@ export class SessionManager {
   /**
    * Entregáveis deste chat, mais recente primeiro. A pasta é do projeto e vários
    * chats dividem ela — sem este filtro o mesmo .md aparecia na barra de todos.
+   * `last` marca a leva do último turno que produziu algo: é o que a barra
+   * mostra por padrão, pra ver o v2 sem o v1 e o v0 do lado.
    */
-  previewFilesForSession(sessionId: string): { rel: string; mtime: number; root: number }[] {
+  previewFilesForSession(
+    sessionId: string,
+  ): { rel: string; mtime: number; root: number; last: boolean }[] {
     const roots = this.previewRootsForSession(sessionId)
     if (roots.length === 0) return []
     const mine = this.authoredFor(sessionId)
+    const last = new Set(mine.last)
     return findAllFiles(roots)
-      .filter((f) => f.abs && mine.has(f.abs))
+      .filter((f) => f.abs && mine.files.has(f.abs))
       .slice(0, PREVIEW_MAX)
-      .map(({ rel, mtime, root }) => ({ rel, mtime, root }))
+      .map(({ rel, mtime, root, abs }) => ({ rel, mtime, root, last: last.has(abs as string) }))
   }
 
   /**
@@ -472,17 +497,23 @@ export class SessionManager {
     const roots = this.previewRootsForSession(sessionId)
     if (roots.length === 0) return
     const mine = this.authoredFor(sessionId)
-    const before = mine.size
-    for (const f of findAllFiles(roots)) {
-      if (f.abs && f.mtime >= since) mine.add(f.abs)
-    }
-    if (mine.size === before) return
-    this.authored.set(sessionId, trimSet(mine, AUTHORED_KEEP))
+    const batch = findAllFiles(roots)
+      .filter((f) => f.abs && f.mtime >= since)
+      .map((f) => f.abs as string)
+    // turno sem entregável (uma pergunta, um ajuste no código) não apaga a leva
+    // anterior da barra: o que ele fez no turno passado continua à mão
+    if (batch.length === 0) return
+    for (const abs of batch) mine.files.add(abs)
+    this.authored.set(sessionId, {
+      files: trimSet(mine.files, AUTHORED_KEEP),
+      last: batch.slice(0, PREVIEW_MAX),
+    })
     this.saveAuthored()
+    void tagAsGreed(batch).catch(() => {}) // etiqueta é enfeite: não derruba o turno
   }
 
   /** Lista do chat, com a primeira leitura reconstruída do transcript. */
-  private authoredFor(sessionId: string): Set<string> {
+  private authoredFor(sessionId: string): { files: Set<string>; last: string[] } {
     const known = this.authored.get(sessionId)
     if (known) return known
     const seeded = this.authoredFromTranscript(sessionId)
@@ -491,29 +522,40 @@ export class SessionManager {
   }
 
   /**
-   * Chats de antes desta anotação não têm histórico de mtime, então a lista sai
+   * Chats de antes desta anotação não têm histórico de turno, então a lista sai
    * do transcript: caminho de Write/Edit e o destino dos comandos que gravam.
+   * Sem turno pra separar as levas, `last` vira o que saiu junto do arquivo mais
+   * novo — na prática, a última leva.
    */
-  private authoredFromTranscript(sessionId: string): Set<string> {
+  private authoredFromTranscript(sessionId: string): { files: Set<string>; last: string[] } {
     const roots = this.previewRootsForSession(sessionId)
-    const out = new Set<string>()
+    const files = new Set<string>()
     for (const e of this.transcript(sessionId)) {
       if (e.kind !== 'tool' || !e.summary) continue
       for (const cand of writtenPaths(e.name, e.summary)) {
         for (const root of roots) {
           const abs = path.resolve(root, cand)
           if (!abs.startsWith(root + path.sep)) continue
-          if (fs.existsSync(abs)) out.add(abs)
+          if (fs.existsSync(abs)) files.add(abs)
         }
       }
     }
-    return out
+    const times = [...files]
+      .map((abs) => ({ abs, mtime: mtimeOf(abs) }))
+      .sort((a, b) => b.mtime - a.mtime)
+    const newest = times[0]?.mtime ?? 0
+    return {
+      files,
+      last: times.filter((f) => newest - f.mtime <= SAME_BATCH_MS).map((f) => f.abs),
+    }
   }
 
   private saveAuthored(): void {
-    const out: Record<string, string[]> = {}
-    for (const [id, files] of this.authored) {
-      if (files.size > 0 && this.sessions.has(id)) out[id] = [...files]
+    const out: Record<string, { files: string[]; last: string[] }> = {}
+    for (const [id, rec] of this.authored) {
+      if (rec.files.size > 0 && this.sessions.has(id)) {
+        out[id] = { files: [...rec.files], last: rec.last }
+      }
     }
     store.write(AUTHORED, out)
   }

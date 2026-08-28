@@ -7,6 +7,8 @@ export interface PreviewFile {
   mtime: number
   /** qual pasta da sessão (codebase ou projeto) tem esse arquivo */
   root: number
+  /** saiu do último turno que produziu alguma coisa */
+  last: boolean
 }
 
 const hideKey = (sessionId: string) => `greed:previewHidden:${sessionId}`

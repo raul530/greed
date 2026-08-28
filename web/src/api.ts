@@ -107,7 +107,7 @@ export const api = {
     ),
   // html que o agente escreveu na pasta de trabalho, mais recente primeiro
   previewFiles: (sessionId: string) =>
-    j<{ files: { rel: string; mtime: number; root: number }[] }>(
+    j<{ files: { rel: string; mtime: number; root: number; last: boolean }[] }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/preview`,
     ),
   // força uma leitura do consumo agora (o servidor também empurra por WS a cada 30s)
