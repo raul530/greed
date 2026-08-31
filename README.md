@@ -21,6 +21,51 @@ npm run dev
 
 then open http://localhost:5173.
 
+`npm test` runs the test suite (host/origin matching plus a real server booted on an ephemeral port); `npm run typecheck` checks the types.
+
+## phone (tailscale or lan)
+
+greed binds to 127.0.0.1 and only answers to localhost by default. two env vars open it up:
+
+- `GREED_HOST` — address the server listens on. default `127.0.0.1`. set it to one of the machine's addresses to make greed reachable from that network. `0.0.0.0` (every interface at once) also works, but it is opt-in on purpose: on a laptop it follows you onto café wifi.
+- `GREED_ALLOWED_HOSTS` — extra hostnames accepted in the Host and Origin headers, on top of the loopback names and the bind address itself. comma or space separated. matching is exact after normalisation (case-insensitive, port ignored, a pasted scheme or trailing dot is stripped) — never substring.
+
+everything lives on the server, so the phone is a second live window onto the same board, not a copy: history, streaming, permission prompts and previews are shared, and answering a prompt on the phone clears it on the desktop.
+
+### over tailscale
+
+1. install tailscale on the mac and on the iphone, sign both into the same account.
+2. `tailscale status` on the mac shows its magicdns name (say `mac.tailnet-name.ts.net`) and its tailnet ip (`100.x.y.z`).
+3. build once, then run bound to the tailnet:
+
+```bash
+npm run build
+GREED_HOST=100.x.y.z GREED_ALLOWED_HOSTS=mac.tailnet-name.ts.net npm start
+```
+
+4. on the iphone, open `http://mac.tailnet-name.ts.net:4517` in safari. share → add to home screen gives it an icon and opens it full screen, without safari chrome.
+
+with tailscale off on the phone the address simply stops resolving, which is the point: only devices in your tailnet can reach it.
+
+### over plain lan
+
+same idea bound to the mac's lan address, reached by its `.local` mdns name:
+
+```bash
+npm run build
+GREED_HOST=192.168.x.y GREED_ALLOWED_HOSTS=your-mac.local npm start
+```
+
+then open `http://your-mac.local:4517` on the phone. caveat: anyone on that wifi can reach the port. fine at home, not in a café — prefer tailscale anywhere you don't own the network.
+
+### what the host check is, and is not
+
+the Host/Origin allowlist stops browsers from being tricked into talking to greed (dns rebinding, cross-site websocket hijacking). it is not authentication. anyone who can route to the bound address gets full access: driving claude sessions with filesystem write, and reading the project working folders through the preview route. on a tailnet that is acceptable because the network itself is the boundary; it is also exactly why you should not bind this to a public interface. while the bind stays on loopback, requests without a Host header and websockets without an Origin are accepted (local tools do that); the moment `GREED_HOST` leaves loopback, both headers become required and must match the allowlist.
+
+### dev server
+
+`npm run dev` picks up the same two variables — vite listens on `GREED_HOST`, accepts `GREED_ALLOWED_HOSTS`, and proxies to wherever the backend went. it works over the network, but for the phone prefer `npm run build && npm start`: one port, one origin, no proxy in the path.
+
 ## what it does
 
 - projects: register a folder (like a repo). the session runs there and uses its claude.md and .mcp.json.
@@ -79,6 +124,6 @@ the memory system is [optmem](https://github.com/VictorTaelin/OptMem) by [victor
 
 ## not in scope
 
-multi user, remote deploy, mobile.
+multi user, remote deploy, public exposure (no auth, no accounts, no tunnels — see the phone section for what the host check does and does not protect). the phone gets the desktop layout in single-column form; a real mobile ui pass is its own project.
 
 built on macos (document text extraction uses native macos tools).
