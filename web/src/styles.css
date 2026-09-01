@@ -2080,6 +2080,15 @@ kbd {
   flex: none;
 }
 
+.send-failed {
+  font-size: 11px;
+  color: var(--alert);
+  border: 1px solid var(--alert);
+  border-radius: var(--r);
+  background: var(--sunk);
+  padding: 4px 8px;
+}
+
 .input-row {
   display: flex;
   gap: 8px;
