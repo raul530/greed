@@ -442,6 +442,9 @@ export function App() {
               onPermission={(requestId, behavior) =>
                 send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
               }
+              onAnswer={(requestId, answers) =>
+                send({ type: 'question_response', sessionId: s.id, requestId, answers })
+              }
               onRename={(title) => send({ type: 'set_title', sessionId: s.id, title })}
               onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
               onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}

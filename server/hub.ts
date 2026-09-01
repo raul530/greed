@@ -21,6 +21,13 @@ function isValidClientMsg(m: unknown): m is ClientMsg {
     case 'interrupt':
     case 'mark_read':
       return typeof msg.sessionId === 'string'
+    case 'question_response':
+      return (
+        typeof msg.sessionId === 'string' &&
+        typeof msg.requestId === 'string' &&
+        !!msg.answers &&
+        typeof msg.answers === 'object'
+      )
     case 'set_title':
       return typeof msg.sessionId === 'string' && typeof msg.title === 'string'
     case 'set_model':

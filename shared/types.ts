@@ -50,6 +50,18 @@ export interface SessionMeta {
   lastError: string | null
 }
 
+export interface AskOption {
+  label: string
+  description: string
+}
+
+export interface AskQuestion {
+  question: string
+  header: string
+  multiSelect: boolean
+  options: AskOption[]
+}
+
 export type ActivityStatus = 'running' | 'done' | 'error'
 export type ActivityKind = 'tool' | 'subagent' | 'task'
 
@@ -147,6 +159,13 @@ export type TranscriptEntry =
       toolName: string
       summary: string
       decision: 'allow' | 'deny' | null
+      ts: number
+    }
+  | {
+      kind: 'question'
+      id: string
+      questions: AskQuestion[]
+      answers: Record<string, string> | null
       ts: number
     }
   | { kind: 'info'; id: string; text: string; ts: number }
@@ -252,6 +271,12 @@ export type ClientMsg =
     }
   | { type: 'interrupt'; sessionId: string }
   | { type: 'mark_read'; sessionId: string }
+  | {
+      type: 'question_response'
+      sessionId: string
+      requestId: string
+      answers: Record<string, string>
+    }
   | { type: 'set_title'; sessionId: string; title: string }
   | { type: 'set_model'; sessionId: string; model: string | null }
   | { type: 'set_effort'; sessionId: string; effort: string | null }

@@ -12,6 +12,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import type {
   ActivityItem,
+  AskQuestion,
   ActivityStatus,
   BtwExchange,
   FleetSnapshot,
@@ -54,6 +55,32 @@ const NAME_MAX = 48
 function boardName(session: SessionMeta): string {
   const clean = `${session.title}`.replace(/\s+/g, ' ').trim()
   return (clean || session.projectName || 'greed').slice(0, NAME_MAX)
+}
+
+const ASK_TOOL = 'AskUserQuestion'
+
+function parseQuestions(input: Record<string, unknown>): AskQuestion[] | null {
+  const raw = input.questions
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const out: AskQuestion[] = []
+  for (const item of raw) {
+    const q = item as Record<string, unknown>
+    if (typeof q.question !== 'string' || !Array.isArray(q.options)) return null
+    const options = (q.options as Record<string, unknown>[])
+      .filter((o) => typeof o?.label === 'string')
+      .map((o) => ({
+        label: String(o.label),
+        description: typeof o.description === 'string' ? o.description : '',
+      }))
+    if (options.length === 0) return null
+    out.push({
+      question: q.question,
+      header: typeof q.header === 'string' ? q.header : '',
+      multiSelect: q.multiSelect === true,
+      options,
+    })
+  }
+  return out
 }
 
 const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
@@ -159,6 +186,7 @@ class AsyncQueue<T> implements AsyncIterable<T> {
 interface PendingPerm {
   request: PermissionRequest
   resolve: (r: PermissionResult) => void
+  question?: boolean
 }
 
 interface LiveSession {
@@ -378,7 +406,7 @@ export class SessionManager {
   respondPermission(sessionId: string, requestId: string, behavior: 'allow' | 'deny'): void {
     const live = this.live.get(sessionId)
     const entry = live?.pending.get(requestId)
-    if (!entry) return
+    if (!entry || entry.question) return
     if (behavior === 'allow') {
       entry.resolve({
         behavior: 'allow',
@@ -672,6 +700,7 @@ export class SessionManager {
     // ao ligar "não perguntar", libera qualquer pedido que já esteja aberto no card
     if (next === 'bypassPermissions' && live.pending.size > 0) {
       for (const entry of [...live.pending.values()]) {
+        if (entry.question) continue
         entry.resolve({
           behavior: 'allow',
           updatedInput: entry.request.input as Record<string, unknown>,
@@ -1184,6 +1213,7 @@ export class SessionManager {
         }
         for (const block of msg.message.content) {
           if (block.type === 'tool_use') {
+            if (block.name === ASK_TOOL) continue
             const summary = summarizeToolInput(block.name, block.input)
             // tools de topo entram no log; subagentes só na árvore de atividade
             if (!nested) {
@@ -1266,6 +1296,84 @@ export class SessionManager {
     }
   }
 
+  private askQuestion(
+    session: SessionMeta,
+    live: LiveSession,
+    input: Record<string, unknown>,
+    questions: AskQuestion[],
+    opts: { signal: AbortSignal },
+  ): Promise<PermissionResult> {
+    const sessionId = session.id
+    const request: PermissionRequest = {
+      id: uid(),
+      sessionId,
+      toolName: ASK_TOOL,
+      input,
+      summary: questions[0].question,
+      ts: now(),
+    }
+    const entryId = uid()
+    this.addEntry(sessionId, {
+      kind: 'question',
+      id: entryId,
+      questions,
+      answers: null,
+      ts: now(),
+    })
+    return new Promise<PermissionResult>((resolve) => {
+      const settle = (result: PermissionResult) => {
+        if (!live.pending.has(request.id)) return
+        live.pending.delete(request.id)
+        const given =
+          result.behavior === 'allow'
+            ? ((result.updatedInput as { answers?: Record<string, string> } | undefined)?.answers ??
+              null)
+            : null
+        this.replaceEntry(sessionId, {
+          kind: 'question',
+          id: entryId,
+          questions,
+          answers: given,
+          ts: now(),
+        })
+        this.hub.broadcast({
+          type: 'permission_resolved',
+          sessionId,
+          requestId: request.id,
+          decision: given ? 'allow' : 'deny',
+        })
+        const s = this.sessions.get(sessionId)
+        if (s && s.status === 'waiting' && live.pending.size === 0) {
+          this.touch(s, { status: 'working', attention: null })
+        }
+        resolve(result)
+      }
+      live.pending.set(request.id, { request, resolve: settle, question: true })
+      opts.signal.addEventListener(
+        'abort',
+        () => settle({ behavior: 'deny', message: 'Pergunta cancelada pela sessão.' }),
+        { once: true },
+      )
+      this.touch(session, { status: 'waiting', attention: 'waiting' })
+      this.hub.broadcast({ type: 'permission_request', request })
+      this.hub.broadcast({
+        type: 'notify',
+        sessionId,
+        kind: 'waiting',
+        title: `${session.projectName} — ${session.title}`,
+        body: questions[0].question,
+      })
+    })
+  }
+
+  answerQuestion(sessionId: string, requestId: string, answers: Record<string, string>): void {
+    const live = this.live.get(sessionId)
+    const pending = live?.pending.get(requestId)
+    if (!pending?.question) return
+    const input = pending.request.input as Record<string, unknown>
+    pending.resolve({ behavior: 'allow', updatedInput: { ...input, answers } })
+  }
+
   private handlePermission(
     sessionId: string,
     toolName: string,
@@ -1282,6 +1390,10 @@ export class SessionManager {
     // escreveu. Perguntar aqui só treinaria o usuário a clicar "permitir".
     if (toolName.startsWith('mcp__greed_memory__')) {
       return Promise.resolve({ behavior: 'allow', updatedInput: input })
+    }
+    if (toolName === ASK_TOOL) {
+      const questions = parseQuestions(input)
+      if (questions) return this.askQuestion(session, live, input, questions, opts)
     }
     const request: PermissionRequest = {
       id: uid(),
