@@ -27,7 +27,7 @@ import { ingestDoc, renderDocCatalog } from './docs'
 import { FleetLog } from './fleet'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
-import { captureTurn, memoryTools, renderMemory } from './memory'
+import { captureTurn, memoryLength, memorySince, memoryTools, renderMemory } from './memory'
 import { envForProfile } from './profiles'
 import type { ProjectRegistry } from './projects'
 import { findAllFiles, PREVIEW_EXT, PREVIEW_MAX } from './preview'
@@ -47,6 +47,13 @@ function composeForModel(text: string, attachments: MsgAttachment[]): string {
     }
   }
   return out
+}
+
+const NAME_MAX = 48
+
+function boardName(session: SessionMeta): string {
+  const clean = `${session.title}`.replace(/\s+/g, ' ').trim()
+  return (clean || session.projectName || 'greed').slice(0, NAME_MAX)
 }
 
 const PERM_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions'])
@@ -165,6 +172,7 @@ interface LiveSession {
   turnSeq: number
   /** árvore de atividade viva do turno (tool_use_id / task_id → item), efêmera */
   activity: Map<string, ActivityItem>
+  memoryLen: number
 }
 
 export class SessionManager {
@@ -354,10 +362,12 @@ export class SessionManager {
     const live = existing ?? this.startLive(session)
     if (!live) return
     live.turnSeq += 1
+    const fresh = memorySince(session.projectId, live.memoryLen)
+    live.memoryLen = fresh.length
     this.turnStart.set(sessionId, now())
     live.queue.push({
       type: 'user',
-      message: { role: 'user', content: forModel },
+      message: { role: 'user', content: fresh.text ? `${fresh.text}\n---\n\n${forModel}` : forModel },
       parent_tool_use_id: null,
     })
     // não rebaixa de 'waiting' se ainda há permissão pendente
@@ -901,6 +911,7 @@ export class SessionManager {
         includePartialMessages: true,
         // resumo humano do que cada subagente está fazendo (custo mínimo)
         agentProgressSummaries: true,
+        extraArgs: { name: boardName(session) },
         abortController: abort,
         env: envForProfile(session.profile),
         stderr: (data: string) => {
@@ -922,6 +933,7 @@ export class SessionManager {
       currentAssistantId: null,
       turnSeq: 0,
       activity: new Map(),
+      memoryLen: memoryLength(session.projectId),
     }
     this.live.set(session.id, live)
     // aproveita a sessão viva pra manter a lista de comandos desta pasta em dia
