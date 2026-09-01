@@ -59,6 +59,25 @@ const Entry = memo(function Entry({ entry }: { entry: TranscriptEntry }) {
         </div>
       )
     }
+    case 'question': {
+      if (!entry.answers) {
+        return (
+          <div className="perm-line pending" title={entry.questions[0]?.question}>
+            ⏳ aguardando sua resposta
+          </div>
+        )
+      }
+      return (
+        <div className="ask-line">
+          {entry.questions.map((q) => (
+            <div key={q.question}>
+              <span className="ask-line-q">{q.question}</span>
+              <span className="ask-line-a">{entry.answers?.[q.question] ?? '—'}</span>
+            </div>
+          ))}
+        </div>
+      )
+    }
     case 'info':
       return <div className="info-line">{entry.text}</div>
     case 'memory':
