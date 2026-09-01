@@ -34,6 +34,7 @@ import {
 } from './commands/SlashMenu'
 import { InlineEdit } from './InlineEdit'
 import { PermissionDock } from './PermissionDock'
+import { QuestionDock } from './QuestionDock'
 import { PreviewPane } from './preview/PreviewPane'
 import { PreviewRail } from './preview/PreviewRail'
 import { fileKey, usePreview } from './preview/usePreview'
@@ -62,6 +63,7 @@ interface Props {
   /** acende o card de novo, pra lembrar de voltar nele */
   onMarkUnread: () => void
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
+  onAnswer: (requestId: string, answers: Record<string, string>) => void
   onSetModel: (model: string | null) => void
   onSetEffort: (effort: string | null) => void
   onSetPermissionMode: (mode: string) => void
@@ -317,7 +319,15 @@ export function SessionCard(props: Props) {
           pending={permissions.length > 0}
           working={session.status === 'working'}
         />
-        <PermissionDock permissions={permissions} onPermission={props.onPermission} />
+        {permissions[0]?.toolName === 'AskUserQuestion' ? (
+          <QuestionDock
+            request={permissions[0]}
+            queued={permissions.length - 1}
+            onAnswer={props.onAnswer}
+          />
+        ) : (
+          <PermissionDock permissions={permissions} onPermission={props.onPermission} />
+        )}
         {treeOpen && <ActivityTree a={act} onClose={() => setTreeOpen(false)} />}
       </div>
       <PreviewRail
@@ -363,7 +373,9 @@ export function SessionCard(props: Props) {
             !connected
               ? 'Reconectando ao servidor…'
               : session.status === 'waiting'
-                ? 'Responda o pedido de permissão acima…'
+                ? permissions[0]?.toolName === 'AskUserQuestion'
+                  ? 'Escolha uma opção acima…'
+                  : 'Responda o pedido de permissão acima…'
                 : 'Mensagem… Enter envia, / abre os comandos'
           }
           onChange={(e) => {
