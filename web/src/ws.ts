@@ -34,6 +34,17 @@ export function connectWS(
   }
   open()
 
+  const revive = () => {
+    if (closed || (ws && ws.readyState === WebSocket.OPEN)) return
+    window.clearTimeout(timer)
+    open()
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') revive()
+  }
+  window.addEventListener('online', revive)
+  document.addEventListener('visibilitychange', onVisible)
+
   return {
     send(m) {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -45,6 +56,8 @@ export function connectWS(
     close() {
       closed = true
       window.clearTimeout(timer)
+      window.removeEventListener('online', revive)
+      document.removeEventListener('visibilitychange', onVisible)
       ws?.close()
     },
   }

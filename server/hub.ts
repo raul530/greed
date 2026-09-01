@@ -38,14 +38,19 @@ function isValidClientMsg(m: unknown): m is ClientMsg {
   }
 }
 
+const HEARTBEAT_MS = 30_000
+
 export class Hub {
   private clients = new Set<WebSocket>()
+  private alive = new WeakMap<WebSocket, boolean>()
   private messageHandler: ((msg: ClientMsg) => void) | null = null
   private connectHandler: ((ws: WebSocket) => void) | null = null
 
   constructor(wss: WebSocketServer) {
     wss.on('connection', (ws) => {
       this.clients.add(ws)
+      this.alive.set(ws, true)
+      ws.on('pong', () => this.alive.set(ws, true))
       ws.on('close', () => this.clients.delete(ws))
       ws.on('error', () => this.clients.delete(ws))
       ws.on('message', (data) => {
@@ -65,6 +70,19 @@ export class Hub {
       })
       this.connectHandler?.(ws)
     })
+
+    const beat = setInterval(() => {
+      for (const ws of this.clients) {
+        if (this.alive.get(ws) === false) {
+          this.clients.delete(ws)
+          ws.terminate()
+          continue
+        }
+        this.alive.set(ws, false)
+        ws.ping()
+      }
+    }, HEARTBEAT_MS)
+    beat.unref?.()
   }
 
   /** quantos navegadores estão ligados agora (poller de consumo só roda com plateia) */
