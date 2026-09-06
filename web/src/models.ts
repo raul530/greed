@@ -6,11 +6,12 @@ export interface Option {
 // IDs explícitos de modelo — a versão fica visível, importa pro consumo.
 export const MODELS: Option[] = [
   { value: '', label: 'Padrão' },
+  { value: 'claude-fable-5-1', label: 'Fable 5.1' },
+  { value: 'claude-fable-5', label: 'Fable 5' },
   { value: 'claude-opus-5', label: 'Opus 5' },
   { value: 'claude-opus-4-8', label: 'Opus 4.8' },
   { value: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { value: 'claude-fable-5', label: 'Fable 5' },
-  { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+  { value: 'claude-haiku-4-5', label: 'Haiku 4.5' },
 ]
 
 // Esforço de raciocínio. Padrão do SDK é 'high'. 'max' = mais raciocínio e consumo.
