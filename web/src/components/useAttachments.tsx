@@ -1,3 +1,4 @@
+import { Loader, Paperclip, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
 import type { MsgAttachment } from '../../../shared/types'
 import { shouldInline } from '../attachments'
@@ -93,7 +94,13 @@ export function AttachChips({
       {attachments.map((a) => (
         <span key={a.id} className={`attach-chip ${a.state}`} title={a.name}>
           <span className="attach-icon">
-            {a.state === 'uploading' ? '⏳' : a.state === 'error' ? '⚠' : '📎'}
+            {a.state === 'uploading' ? (
+              <Loader size={11} className="spin" />
+            ) : a.state === 'error' ? (
+              <TriangleAlert size={11} />
+            ) : (
+              <Paperclip size={11} />
+            )}
           </span>
           <span className="attach-name">{a.name}</span>
           <span className="attach-kind">
@@ -106,7 +113,7 @@ export function AttachChips({
                   : 'enviando…'}
           </span>
           <button className="attach-x" data-tip="Tirar este anexo" onClick={() => onRemove(a.id)}>
-            ✕
+            <X size={11} />
           </button>
         </span>
       ))}

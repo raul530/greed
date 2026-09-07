@@ -1,3 +1,4 @@
+import { Eye, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { fileKey, type PreviewFile } from './usePreview'
 
@@ -44,7 +45,9 @@ export function PreviewRail({ files, openKey, hidden, onOpen, onHide }: Props) {
 
   return (
     <div className={`act-rail prev-rail ${openKey ? 'open' : ''}`}>
-      <span className="prev-rail-eye">▣</span>
+      <span className="prev-rail-eye">
+        <Eye size={12} />
+      </span>
       <span className="prev-rail-files">
         {shown.map((f) => (
           <button
@@ -84,7 +87,7 @@ export function PreviewRail({ files, openKey, hidden, onOpen, onHide }: Props) {
         data-tip="Some com esta barra — ela volta quando ele mexer no arquivo de novo"
         onClick={onHide}
       >
-        ✕
+        <X size={12} />
       </button>
     </div>
   )

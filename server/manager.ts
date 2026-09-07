@@ -19,6 +19,7 @@ import type {
   PermissionRequest,
   ServerMsg,
   SessionMeta,
+  SessionUsage,
   TranscriptEntry,
 } from '../shared/types'
 import { askBtw } from './btw'
@@ -161,6 +162,69 @@ interface PendingPerm {
   resolve: (r: PermissionResult) => void
 }
 
+/** totais que o result do SDK traz (acumulados dentro de um mesmo query()) */
+interface UsageTotals {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  costUsd: number
+  contextWindow: number
+}
+
+const ZERO_TOTALS: UsageTotals = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  costUsd: 0,
+  contextWindow: 0,
+}
+
+/** soma o modelUsage do result (todos os modelos: loop principal, subagentes, compactação) */
+function sumModelUsage(msg: unknown): UsageTotals {
+  const r = msg as {
+    total_cost_usd?: number
+    modelUsage?: Record<
+      string,
+      {
+        inputTokens?: number
+        outputTokens?: number
+        cacheReadInputTokens?: number
+        cacheCreationInputTokens?: number
+        costUSD?: number
+        contextWindow?: number
+      }
+    >
+  }
+  const t: UsageTotals = { ...ZERO_TOTALS }
+  for (const m of Object.values(r.modelUsage ?? {})) {
+    t.input += m.inputTokens ?? 0
+    t.output += m.outputTokens ?? 0
+    t.cacheRead += m.cacheReadInputTokens ?? 0
+    t.cacheWrite += m.cacheCreationInputTokens ?? 0
+    t.costUsd += m.costUSD ?? 0
+    t.contextWindow = Math.max(t.contextWindow, m.contextWindow ?? 0)
+  }
+  if (typeof r.total_cost_usd === 'number' && r.total_cost_usd > t.costUsd) t.costUsd = r.total_cost_usd
+  return t
+}
+
+function emptyUsage(): SessionUsage {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    costUsd: 0,
+    turns: 0,
+    durationMs: 0,
+    context: 0,
+    contextWindow: 0,
+    since: now(),
+  }
+}
+
 interface LiveSession {
   queue: AsyncQueue<SDKUserMessage>
   q: Query
@@ -173,6 +237,8 @@ interface LiveSession {
   /** árvore de atividade viva do turno (tool_use_id / task_id → item), efêmera */
   activity: Map<string, ActivityItem>
   memoryLen: number
+  /** parte do consumo deste query() que já foi somada em session.usage (o result traz o acumulado) */
+  usageReported: UsageTotals
 }
 
 export class SessionManager {
@@ -934,6 +1000,7 @@ export class SessionManager {
       turnSeq: 0,
       activity: new Map(),
       memoryLen: memoryLength(session.projectId),
+      usageReported: { ...ZERO_TOTALS },
     }
     this.live.set(session.id, live)
     // aproveita a sessão viva pra manter a lista de comandos desta pasta em dia
@@ -1161,6 +1228,13 @@ export class SessionManager {
         // que ele chama alimentam a árvore de atividade e a tela de Agentes
         const nested = Boolean(msg.parent_tool_use_id)
         if (!nested) {
+          // janela em uso = tudo que entrou nesta chamada (novo + cache); vai pro card no result
+          const u = msg.message.usage
+          if (u) {
+            const ctx =
+              (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+            if (ctx > 0) (session.usage ??= emptyUsage()).context = ctx
+          }
           let text = ''
           for (const block of msg.message.content) {
             if (block.type === 'text') text += (text ? '\n\n' : '') + block.text
@@ -1232,6 +1306,7 @@ export class SessionManager {
         this.clearActivity(sessionId, live)
         this.recordAuthored(sessionId)
         this.fleet.endRun(sessionId, msg.subtype === 'success' ? 'ok' : 'error')
+        this.foldUsage(session, live, msg)
         if (msg.subtype !== 'success') {
           const detail =
             'errors' in msg && Array.isArray(msg.errors) && msg.errors.length > 0
@@ -1264,6 +1339,37 @@ export class SessionManager {
       default:
         break
     }
+  }
+
+  /**
+   * Soma no chat o que este turno consumiu. O result traz o acumulado do
+   * query() inteiro, então entra só a diferença desde o último result; o
+   * usage do chat sobrevive a resume, fechar e reabrir.
+   */
+  private foldUsage(session: SessionMeta, live: LiveSession, msg: SDKMessage): void {
+    const totals = sumModelUsage(msg)
+    const prev = live.usageReported
+    const usage = session.usage ?? emptyUsage()
+    // result de erro/crash pode vir zerado: nunca subtrai
+    const d = (k: keyof UsageTotals) => Math.max(0, totals[k] - prev[k])
+    usage.input += d('input')
+    usage.output += d('output')
+    usage.cacheRead += d('cacheRead')
+    usage.cacheWrite += d('cacheWrite')
+    usage.costUsd += d('costUsd')
+    usage.turns += 1
+    const dur = (msg as { duration_ms?: number }).duration_ms
+    if (typeof dur === 'number' && dur > 0) usage.durationMs += dur
+    if (totals.contextWindow > 0) usage.contextWindow = totals.contextWindow
+    live.usageReported = {
+      input: Math.max(prev.input, totals.input),
+      output: Math.max(prev.output, totals.output),
+      cacheRead: Math.max(prev.cacheRead, totals.cacheRead),
+      cacheWrite: Math.max(prev.cacheWrite, totals.cacheWrite),
+      costUsd: Math.max(prev.costUsd, totals.costUsd),
+      contextWindow: totals.contextWindow,
+    }
+    session.usage = usage
   }
 
   private handlePermission(

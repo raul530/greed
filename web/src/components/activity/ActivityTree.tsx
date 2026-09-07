@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import type { ActivityItem } from '../../../../shared/types'
 import { ActivityRow } from './ActivityRow'
@@ -34,7 +35,7 @@ export function ActivityTree({ a, onClose }: Props) {
       <div className="act-tree-head">
         <span>atividade</span>
         <button className="icon" onClick={onClose} data-tip="Fechar (esc)">
-          ✕
+          <X size={14} />
         </button>
       </div>
       <div className="act-tree-body">

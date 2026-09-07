@@ -14,6 +14,11 @@ const backend = `${backendHost.includes(':') ? `[${backendHost}]` : backendHost}
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
+  // lucide é um pacote com milhares de módulos: pré-empacotar evita a cascata
+  // de requests no dev e garante uma única cópia do React pros ícones
+  optimizeDeps: {
+    include: ['lucide-react'],
+  },
   server: {
     host: bind || undefined,
     allowedHosts: parseAllowedHosts(process.env.GREED_ALLOWED_HOSTS),
