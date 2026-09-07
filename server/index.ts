@@ -87,6 +87,9 @@ hub.onMessage((msg) => {
     case 'mark_unread':
       manager.markUnread(msg.sessionId)
       break
+    case 'question_response':
+      manager.answerQuestion(msg.sessionId, msg.requestId, msg.answers)
+      break
     case 'set_title':
       manager.renameSession(msg.sessionId, msg.title)
       break
