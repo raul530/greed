@@ -10,6 +10,7 @@ import { Hub } from './hub'
 import { buildInsights } from './insights'
 import { SessionManager } from './manager'
 import { warmMemory } from './memory'
+import { createHostGuard } from './net'
 import { defaultProfileDir, listProfiles } from './profiles'
 import { describeThread, findThreadFile, listThreads, readThreadEntries } from './threads'
 import { ProjectRegistry } from './projects'
@@ -18,27 +19,18 @@ import { fetchUsage, lastKnownUsage, POLL_MS, startUsagePoller } from './usage'
 
 const PORT = Number(process.env.GREED_PORT ?? 4517)
 
-/** Só aceita hosts locais — bloqueia DNS rebinding e acesso de outras máquinas. */
-function isLocalHostname(host: string | undefined): boolean {
-  if (!host) return true // clientes sem Host (ex.: ferramentas locais) são ok
-  const name = host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase()
-  return name === 'localhost' || name === '127.0.0.1' || name === '::1'
-}
-
-/** Origin de página web só pode ser local — bloqueia hijacking cross-site do WebSocket. */
-function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return true // conexões sem Origin não vêm de uma página no navegador
-  try {
-    return isLocalHostname(new URL(origin).hostname)
-  } catch {
-    return false
-  }
-}
+// Host e Origin contra a lista de nomes permitidos — bloqueia DNS rebinding e
+// hijacking cross-site do WebSocket. O casamento em si vive em net.ts; fora do
+// loopback (GREED_HOST) os dois cabeçalhos passam a ser obrigatórios.
+const guard = createHostGuard({
+  bindHost: process.env.GREED_HOST,
+  allowedHosts: process.env.GREED_ALLOWED_HOSTS,
+})
 
 const app = express()
 app.use(express.json({ limit: '2mb' }))
 app.use((req, res, next) => {
-  if (!isLocalHostname(req.headers.host)) {
+  if (!guard.allowsHost(req.headers.host)) {
     res.status(403).json({ error: 'Host não permitido' })
     return
   }
@@ -51,7 +43,7 @@ const wss = new WebSocketServer({
   server,
   path: '/ws',
   verifyClient: (info, cb) => {
-    if (isAllowedOrigin(info.origin)) cb(true)
+    if (guard.allowsOrigin(info.origin)) cb(true)
     else cb(false, 403, 'Origin não permitida')
   },
 })
@@ -355,7 +347,8 @@ app.get('/api/sessions/:id/preview', (req, res) => {
 })
 
 // Serve os arquivos da pasta de trabalho (html + css/js/imagens que ele referencia).
-// Só localhost (guarda global) e só dentro da raiz — nada de subir com "..".
+// Só hosts permitidos (guarda global) e só dentro da raiz — nada de subir com "..".
+// A defesa contra ".." não depende do guarda: vale igual com o servidor na rede.
 app.get('/preview/:id/*', (req, res) => {
   const roots = manager.previewRootsForSession(req.params.id)
   if (roots.length === 0) {
@@ -397,8 +390,15 @@ if (process.env.GREED_SERVE_STATIC) {
   app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')))
 }
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[greed] server rodando em http://localhost:${PORT}`)
+server.listen(PORT, guard.bindHost, () => {
+  const addr = server.address()
+  const port = addr && typeof addr === 'object' ? addr.port : PORT
+  const shown = guard.bindHost.includes(':') ? `[${guard.bindHost}]` : guard.bindHost
+  console.log(`[greed] server rodando em http://${guard.requireHeaders ? shown : 'localhost'}:${port}`)
+  if (guard.requireHeaders) {
+    // fora do loopback não há autenticação: quem alcança o endereço manda no servidor
+    console.log(`[greed] hosts aceitos: ${[...guard.allowedHosts].join(', ')}`)
+  }
   // migra a memória para o OptMem e adianta as compressões, antes de qualquer sessão
   warmMemory(projects.list().map((p) => p.id))
 })

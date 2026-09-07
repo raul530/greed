@@ -1,3 +1,13 @@
+import {
+  ChevronDown,
+  ChevronRight,
+  CornerDownLeft,
+  FolderGit2,
+  FolderSearch,
+  Import,
+  Paperclip,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Profile, Project } from '../../../shared/types'
 import { api } from '../api'
@@ -16,6 +26,26 @@ interface Props {
   onClose: () => void
   onManageProjects: () => void
   onImport: () => void
+}
+
+/** select do modal: nativo por dentro, seta nossa por fora */
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string
+  onChange: (v: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <span className="sel">
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
+      <ChevronDown size={13} />
+    </span>
+  )
 }
 
 export function NewChatModal({ projects, profiles, onClose, onManageProjects, onImport }: Props) {
@@ -105,10 +135,12 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
     }
   }
 
+  const codebaseName = codebase.split('/').filter(Boolean).pop()
+
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
-        className={`modal${dragging ? ' dragging' : ''}`}
+        className={`modal new-chat${dragging ? ' dragging' : ''}`}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes('Files')) {
             e.preventDefault()
@@ -126,7 +158,12 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
           }
         }}
       >
-        <h2>Novo chat</h2>
+        <div className="modal-head">
+          <h2>Novo chat</h2>
+          <button className="icon" data-tip="Fechar (esc)" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
         {projects.length === 0 ? (
           <div className="modal-empty">
             <p>Nenhum projeto registrado ainda. Um projeto é uma pasta com seu CLAUDE.md e MCPs.</p>
@@ -138,73 +175,90 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
           <>
             <label>
               Projeto (contexto)
-              <select value={effectiveId} onChange={(e) => setProjectId(e.target.value)}>
+              <Select value={effectiveId} onChange={setProjectId}>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {p.path}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               Codebase (opcional)
               <div className="codebase-row">
-                <span className="codebase-path" title={codebase || undefined}>
-                  {codebase || 'usa a pasta do projeto'}
+                <span
+                  className={`codebase-path ${codebase ? 'set' : ''}`}
+                  title={codebase || undefined}
+                >
+                  {codebase ? (
+                    <>
+                      <FolderGit2 size={13} />
+                      <b>{codebaseName}</b>
+                      <span className="codebase-dir">{codebase}</span>
+                    </>
+                  ) : (
+                    'usa a pasta do projeto'
+                  )}
                 </span>
-                <button type="button" onClick={() => setPicking(true)}>
-                  Procurar…
-                </button>
                 {codebase && (
-                  <button type="button" className="icon" data-tip="Limpar — volta a usar a pasta do projeto" onClick={() => setCodebase('')}>
-                    ✕
+                  <button
+                    type="button"
+                    className="icon"
+                    data-tip="Limpar — volta a usar a pasta do projeto"
+                    onClick={() => setCodebase('')}
+                  >
+                    <X size={14} />
                   </button>
                 )}
+                <button type="button" className="with-icon" onClick={() => setPicking(true)}>
+                  <FolderSearch size={14} />
+                  Procurar
+                </button>
               </div>
             </label>
             <div className="field-row">
               <label>
                 Modelo
-                <select value={model} onChange={(e) => setModel(e.target.value)}>
+                <Select value={model} onChange={setModel}>
                   {MODELS.map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Esforço
-                <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+                <Select value={effort} onChange={setEffort}>
                   {EFFORTS.map((x) => (
                     <option key={x.value} value={x.value}>
                       {x.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             </div>
             <div className="field-row">
               <label>
                 Permissões
-                <select value={permMode} onChange={(e) => setPermMode(e.target.value)}>
+                <Select value={permMode} onChange={setPermMode}>
                   {PERMISSION_MODES.map((p) => (
                     <option key={p.value} value={p.value}>
                       {p.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               {profiles.length > 1 && (
                 <label>
                   Conta
-                  <select value={profile} onChange={(e) => setProfile(e.target.value)}>
+                  <Select value={profile} onChange={setProfile}>
                     {profiles.map((p) => (
                       <option key={p.dir} value={p.dir} title={p.dir}>
                         {p.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               )}
             </div>
@@ -216,6 +270,7 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
             </p>
             <details className="profile-guide">
               <summary>
+                <ChevronRight size={12} />
                 {profiles.length > 1
                   ? 'Como adicionar outra conta Claude?'
                   : 'Quer usar mais de uma conta Claude (pessoal e trabalho)?'}
@@ -232,36 +287,35 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
             </details>
             <label>
               Primeiro prompt
-              <AttachChips attachments={att.attachments} onRemove={att.remove} />
-              <div className="prompt-row">
-                <textarea
-                  ref={taRef}
-                  rows={5}
-                  value={prompt}
-                  placeholder="O que essa sessão deve fazer? (📎, ctrl+v ou arraste p/ anexar)"
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onPaste={(e) => {
-                    // print/cópia de imagem colada com ctrl+v vira anexo
-                    const files = filesFromClipboard(e.clipboardData)
-                    if (files.length > 0) {
-                      e.preventDefault()
-                      void addFiles(files)
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault()
-                      void submit()
-                    }
-                  }}
-                />
+              <textarea
+                ref={taRef}
+                rows={5}
+                value={prompt}
+                placeholder="O que essa sessão deve fazer?"
+                onChange={(e) => setPrompt(e.target.value)}
+                onPaste={(e) => {
+                  // print/cópia de imagem colada com ctrl+v vira anexo
+                  const files = filesFromClipboard(e.clipboardData)
+                  if (files.length > 0) {
+                    e.preventDefault()
+                    void addFiles(files)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    void submit()
+                  }
+                }}
+              />
+              <div className="prompt-bar">
                 <button
                   type="button"
-                  className="attach-btn"
+                  className="icon attach-btn"
                   data-tip="Anexar arquivo — ou cole (⌘V) e arraste pro modal"
                   onClick={() => fileRef.current?.click()}
                 >
-                  📎
+                  <Paperclip size={15} />
                 </button>
                 <input
                   ref={fileRef}
@@ -273,16 +327,31 @@ export function NewChatModal({ projects, profiles, onClose, onManageProjects, on
                     e.target.value = ''
                   }}
                 />
+                <AttachChips attachments={att.attachments} onRemove={att.remove} />
+                {att.attachments.length === 0 && (
+                  <span className="prompt-bar-hint">anexe, cole ou arraste arquivos</span>
+                )}
               </div>
             </label>
             {error && <div className="modal-error">{error}</div>}
             <div className="modal-actions">
-              <button className="link-action" onClick={onImport}>
+              <button className="link-action with-icon" onClick={onImport}>
+                <Import size={14} />
                 Importar thread do Claude
               </button>
               <button onClick={onClose}>Cancelar</button>
-              <button className="primary" disabled={!canSubmit} onClick={() => void submit()}>
-                {busy ? 'Abrindo…' : att.uploading ? 'Anexando…' : 'Iniciar (⌘⏎)'}
+              <button
+                className="primary with-icon"
+                disabled={!canSubmit}
+                onClick={() => void submit()}
+              >
+                {busy ? 'Abrindo…' : att.uploading ? 'Anexando…' : 'Iniciar'}
+                {!busy && !att.uploading && (
+                  <kbd>
+                    ⌘
+                    <CornerDownLeft size={10} />
+                  </kbd>
+                )}
               </button>
             </div>
           </>

@@ -21,6 +21,51 @@ npm run dev
 
 then open http://localhost:5173.
 
+`npm test` runs the test suite (host/origin matching plus a real server booted on an ephemeral port); `npm run typecheck` checks the types.
+
+## phone (tailscale or lan)
+
+greed binds to 127.0.0.1 and only answers to localhost by default. two env vars open it up:
+
+- `GREED_HOST` — address the server listens on. default `127.0.0.1`. set it to one of the machine's addresses to make greed reachable from that network. `0.0.0.0` (every interface at once) also works, but it is opt-in on purpose: on a laptop it follows you onto café wifi.
+- `GREED_ALLOWED_HOSTS` — extra hostnames accepted in the Host and Origin headers, on top of the loopback names and the bind address itself. comma or space separated. matching is exact after normalisation (case-insensitive, port ignored, a pasted scheme or trailing dot is stripped) — never substring.
+
+everything lives on the server, so the phone is a second live window onto the same board, not a copy: history, streaming, permission prompts and previews are shared, and answering a prompt on the phone clears it on the desktop.
+
+### over tailscale
+
+1. install tailscale on the mac and on the iphone, sign both into the same account.
+2. `tailscale status` on the mac shows its magicdns name (say `mac.tailnet-name.ts.net`) and its tailnet ip (`100.x.y.z`).
+3. build once, then run bound to the tailnet:
+
+```bash
+npm run build
+GREED_HOST=100.x.y.z GREED_ALLOWED_HOSTS=mac.tailnet-name.ts.net npm start
+```
+
+4. on the iphone, open `http://mac.tailnet-name.ts.net:4517` in safari. share → add to home screen gives it an icon and opens it full screen, without safari chrome.
+
+with tailscale off on the phone the address simply stops resolving, which is the point: only devices in your tailnet can reach it.
+
+### over plain lan
+
+same idea bound to the mac's lan address, reached by its `.local` mdns name:
+
+```bash
+npm run build
+GREED_HOST=192.168.x.y GREED_ALLOWED_HOSTS=your-mac.local npm start
+```
+
+then open `http://your-mac.local:4517` on the phone. caveat: anyone on that wifi can reach the port. fine at home, not in a café — prefer tailscale anywhere you don't own the network.
+
+### what the host check is, and is not
+
+the Host/Origin allowlist stops browsers from being tricked into talking to greed (dns rebinding, cross-site websocket hijacking). it is not authentication. anyone who can route to the bound address gets full access: driving claude sessions with filesystem write, and reading the project working folders through the preview route. on a tailnet that is acceptable because the network itself is the boundary; it is also exactly why you should not bind this to a public interface. while the bind stays on loopback, requests without a Host header and websockets without an Origin are accepted (local tools do that); the moment `GREED_HOST` leaves loopback, both headers become required and must match the allowlist.
+
+### dev server
+
+`npm run dev` picks up the same two variables — vite listens on `GREED_HOST`, accepts `GREED_ALLOWED_HOSTS`, and proxies to wherever the backend went. it works over the network, but for the phone prefer `npm run build && npm start`: one port, one origin, no proxy in the path.
+
 ## what it does
 
 - projects: register a folder (like a repo). the session runs there and uses its claude.md and .mcp.json.
@@ -32,7 +77,10 @@ then open http://localhost:5173.
 - rename: double click a card title, or hit ✎ in history and in the projects list. renaming a project updates the chats that use it.
 - delete: ✕ in history throws a chat away for good, transcript included. it asks first.
 - resizable cards: drag the bottom right corner. the card takes exactly the size you drag, width and height, and the others move around it while you drag. the size sticks per chat.
-- themes: three dark (orange, purple, green) and three light (paper, sage, lilac). pick one of each; on ◐ auto greed follows the os appearance, so it goes light by day and dark at sunset on its own. the button says which mode is on and the swatch in use is ringed.
+- themes: four dark (orange, purple, green, solarized) and four light (paper, sage, lilac, solarized). the theme button in the topbar shows the mode and the swatch in use; it opens a panel where you pick the mode (auto, dark, light) and one theme of each kind. on auto greed follows the os appearance, so it goes light by day and dark at sunset on its own.
+- reset layout: the grid button in the topbar puts every card back at the default size (and un-expands the expanded one). it only lights up when some card has been resized.
+- per-chat consumption: the gauge chip in the composer bar shows the tokens this chat has used and how full its context window is; click it for input, output, cache, turns, model time and the sdk's cost estimate. counting starts on the first turn after this feature exists, so older chats begin at zero.
+- icons: the ui uses one icon set (lucide) and no emojis.
 - deliverables: the bar under each card lists what that chat just wrote (html, md, pdf, svg, csv, txt) and opens it in a 16:9 preview you can resize, reload and download. by default it shows only the batch from the last turn, so asking for a v2 shows the v2; `tudo N` opens everything the chat ever produced. the list is per chat, not per folder, even when several chats share a project.
 - finder tag: on macos every file a chat creates gets tagged `greed` (yellow), so they are one click away in the finder sidebar and in `mdfind "kMDItemUserTags == 'greed'"`. existing tags on a file are kept. rename it with `GREED_FINDER_TAG`, or set it empty to turn it off. no-op on other systems.
 - shortcuts: cmd/ctrl+k new chat, cmd/ctrl+1..9 jump between cards.
@@ -79,6 +127,6 @@ the memory system is [optmem](https://github.com/VictorTaelin/OptMem) by [victor
 
 ## not in scope
 
-multi user, remote deploy, mobile.
+multi user, remote deploy, public exposure (no auth, no accounts, no tunnels — see the phone section for what the host check does and does not protect). the phone gets the desktop layout in single-column form; a real mobile ui pass is its own project.
 
 built on macos (document text extraction uses native macos tools).

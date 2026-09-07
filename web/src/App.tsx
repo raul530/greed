@@ -1,3 +1,4 @@
+import { Bell, LayoutGrid } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ClientMsg, Profile, ServerMsg } from '../../shared/types'
 import { api } from './api'
@@ -9,48 +10,14 @@ import { NewChatModal } from './components/NewChatModal'
 import { ProjectFilter } from './components/ProjectFilter'
 import { ProjectsModal } from './components/ProjectsModal'
 import { SessionCard } from './components/SessionCard'
+import { loadTheme, saveTheme, ThemeMenu, type ThemePref } from './components/ThemeMenu'
 import { TooltipLayer } from './components/Tooltip'
 import { UsageView } from './components/UsageView'
+import { resetLayout, useLayoutDirty } from './components/useCardSize'
 import { initialState, reducer } from './store'
 import { connectWS, type WSHandle } from './ws'
 
 const HIDDEN_KEY = 'greed:hiddenProjects'
-const THEME_KEY = 'greed:theme'
-const DARK_THEMES = ['orange', 'purple', 'green'] as const
-const LIGHT_THEMES = ['paper', 'sage', 'lilac'] as const
-const MODES = ['auto', 'dark', 'light'] as const
-
-type Mode = (typeof MODES)[number]
-
-/** o tema escuro e o claro preferidos, e quem decide qual dos dois vale agora */
-interface ThemePref {
-  mode: Mode
-  dark: string
-  light: string
-}
-
-const MODE_LABEL: Record<Mode, { icon: string; label: string; tip: string }> = {
-  auto: {
-    icon: '◐',
-    label: 'auto',
-    tip: 'Seguindo o sistema: claro de dia, escuro ao anoitecer. Clique pra fixar no escuro.',
-  },
-  dark: { icon: '☾', label: 'escuro', tip: 'Fixo no escuro. Clique pra fixar no claro.' },
-  light: { icon: '☀', label: 'claro', tip: 'Fixo no claro. Clique pra seguir o sistema.' },
-}
-
-function loadTheme(): ThemePref {
-  const fallback: ThemePref = { mode: 'auto', dark: 'orange', light: 'paper' }
-  try {
-    const raw = localStorage.getItem(THEME_KEY)
-    if (!raw) return fallback
-    // versão antiga guardava só o nome do tema escuro
-    if (!raw.startsWith('{')) return { ...fallback, dark: raw }
-    return { ...fallback, ...(JSON.parse(raw) as Partial<ThemePref>) }
-  } catch {
-    return fallback
-  }
-}
 
 /** telas da HUD — o board é a de sempre; as outras entram aqui */
 const VIEWS = [
@@ -72,7 +39,7 @@ function loadHidden(): Set<string> {
 function showNotification(msg: Extract<ServerMsg, { type: 'notify' }>) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   try {
-    new Notification(msg.kind === 'waiting' ? `⚠️ ${msg.title}` : `✅ ${msg.title}`, {
+    new Notification(msg.kind === 'waiting' ? `Esperando você: ${msg.title}` : `Terminou: ${msg.title}`, {
       body: msg.body,
       tag: `greed-${msg.sessionId}`,
     })
@@ -103,6 +70,7 @@ export function App() {
       .catch(() => {})
   }, [modal])
   const [theme, setTheme] = useState<ThemePref>(loadTheme)
+  const layoutDirty = useLayoutDirty()
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
@@ -121,11 +89,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', activeTheme)
     document.documentElement.setAttribute('data-scheme', scheme)
-    try {
-      localStorage.setItem(THEME_KEY, JSON.stringify(theme))
-    } catch {
-      // localStorage indisponível — tema só não persiste
-    }
+    saveTheme(theme)
   }, [theme, activeTheme, scheme])
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
@@ -313,45 +277,33 @@ export function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <div className="themes">
+          {view === 'board' && (
             <button
-              className={`theme-mode ${theme.mode}`}
-              data-tip={MODE_LABEL[theme.mode].tip}
-              onClick={() =>
-                setTheme((p) => ({ ...p, mode: MODES[(MODES.indexOf(p.mode) + 1) % MODES.length] }))
+              className="icon layout-reset"
+              disabled={!layoutDirty && !expanded}
+              data-tip={
+                layoutDirty || expanded
+                  ? 'Voltar todos os cards ao tamanho padrão'
+                  : 'Todos os cards já estão no tamanho padrão'
               }
+              aria-label="Voltar ao layout padrão"
+              onClick={() => {
+                setExpandedId(null)
+                resetLayout()
+              }}
             >
-              {MODE_LABEL[theme.mode].icon}
-              <i>{MODE_LABEL[theme.mode].label}</i>
+              <LayoutGrid size={15} />
             </button>
-            {[...DARK_THEMES, ...LIGHT_THEMES].map((t) => {
-              const light = (LIGHT_THEMES as readonly string[]).includes(t)
-              return (
-                <button
-                  key={t}
-                  className={[
-                    'swatch',
-                    t,
-                    (light ? theme.light : theme.dark) === t ? 'active' : '',
-                    activeTheme === t ? 'live' : '',
-                    t === LIGHT_THEMES[0] ? 'group-start' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  data-tip={
-                    activeTheme === t
-                      ? `${t} — em uso agora`
-                      : `${t} — seu tema ${light ? 'claro' : 'escuro'}`
-                  }
-                  aria-label={`tema ${t}`}
-                  onClick={() => setTheme((p) => (light ? { ...p, light: t } : { ...p, dark: t }))}
-                />
-              )
-            })}
-          </div>
+          )}
+          <ThemeMenu theme={theme} activeTheme={activeTheme} scheme={scheme} onChange={setTheme} />
           {notifPerm === 'default' && (
-            <button onClick={requestNotif} title="Notificações de desktop quando um chat terminar">
-              🔔 Ativar notificações
+            <button
+              className="with-icon"
+              onClick={requestNotif}
+              data-tip="Notificações de desktop quando um chat terminar"
+            >
+              <Bell size={13} />
+              Ativar notificações
             </button>
           )}
           {view === 'board' && projectsOnBoard.length > 1 && (

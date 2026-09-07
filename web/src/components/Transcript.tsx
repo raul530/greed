@@ -1,3 +1,4 @@
+import { Brain, Check, Clock, Paperclip, Wrench, X } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 import type { TranscriptEntry } from '../../../shared/types'
 import { Markdown } from './Markdown'
@@ -20,7 +21,8 @@ const Entry = memo(function Entry({ entry }: { entry: TranscriptEntry }) {
                       : 'Salvo na pasta do projeto — ele abre com Read'
                   }
                 >
-                  📎 {a.name}
+                  <Paperclip size={10} />
+                  {a.name}
                 </span>
               ))}
             </div>
@@ -39,22 +41,33 @@ const Entry = memo(function Entry({ entry }: { entry: TranscriptEntry }) {
       return (
         <div className="tool-line" data-st={st} title={entry.result || entry.summary}>
           <span className="tool-mark">
-            {st === 'running' ? <span className="act-spin" /> : st === 'error' ? '✗' : '✓'}
+            {st === 'running' ? (
+              <span className="act-spin" />
+            ) : st === 'error' ? (
+              <X size={10} />
+            ) : (
+              <Check size={10} />
+            )}
           </span>
-          <span className="tool-name">⚙ {entry.name}</span>
+          <span className="tool-name">
+            <Wrench size={10} />
+            {entry.name}
+          </span>
           <span className="tool-sum">{entry.result || entry.summary}</span>
         </div>
       )
     }
     case 'permission': {
+      const Mark = entry.decision === 'allow' ? Check : entry.decision === 'deny' ? X : Clock
       const label =
         entry.decision === 'allow'
-          ? '✓ permitido'
+          ? 'permitido'
           : entry.decision === 'deny'
-            ? '✗ negado'
-            : '⏳ aguardando decisão'
+            ? 'negado'
+            : 'aguardando decisão'
       return (
         <div className={`perm-line ${entry.decision ?? 'pending'}`} title={entry.summary}>
+          <Mark size={11} />
           {label} — {entry.toolName}
         </div>
       )
@@ -64,7 +77,9 @@ const Entry = memo(function Entry({ entry }: { entry: TranscriptEntry }) {
     case 'memory':
       return (
         <div className="memory-line" data-src={entry.source}>
-          <span className="memory-mark">🧠</span>
+          <span className="memory-mark">
+            <Brain size={12} />
+          </span>
           <span>memória atualizada</span>
           <span className="memory-what">{entry.text}</span>
         </div>

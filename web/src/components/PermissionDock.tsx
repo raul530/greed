@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react'
 import type { PermissionRequest } from '../../../shared/types'
 
 function formatInput(input: unknown): string {
@@ -29,7 +30,10 @@ export function PermissionDock({ permissions, onPermission }: Props) {
     <div className="perm-dock">
       <div className="perm-panel">
         <div className="perm-head">
-          <span className="perm-siren">🔐</span> Pedido de permissão: <b>{permission.toolName}</b>
+          <span className="perm-siren">
+            <Lock size={13} />
+          </span>
+          Pedido de permissão: <b>{permission.toolName}</b>
           {queued > 0 && <span className="perm-queue">+{queued} na fila</span>}
         </div>
         <pre className="perm-body">{formatInput(permission.input)}</pre>

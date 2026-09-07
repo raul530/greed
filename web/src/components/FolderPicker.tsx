@@ -1,3 +1,4 @@
+import { CornerLeftUp, Folder, FolderGit2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type BrowseResult } from '../api'
 
@@ -26,7 +27,12 @@ export function FolderPicker({ onPick, onClose }: Props) {
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal picker">
-        <h2>Escolher pasta / repositório</h2>
+        <div className="modal-head">
+          <h2>Escolher pasta / repositório</h2>
+          <button className="icon" data-tip="Fechar (esc)" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
         <div className="picker-path" title={data?.path}>
           {data?.path ?? '…'}
           {data?.isRepo && <span className="repo-badge">git</span>}
@@ -34,7 +40,8 @@ export function FolderPicker({ onPick, onClose }: Props) {
         <div className="picker-list">
           {data?.parent && (
             <button className="picker-item up" onClick={() => load(data.parent!)}>
-              ‹ ..
+              <CornerLeftUp size={13} />
+              <span className="picker-name">pasta acima</span>
             </button>
           )}
           {data?.entries.map((e) => (
@@ -43,6 +50,7 @@ export function FolderPicker({ onPick, onClose }: Props) {
               className="picker-item"
               onClick={() => load(`${data.path}/${e.name}`)}
             >
+              {e.isRepo ? <FolderGit2 size={13} /> : <Folder size={13} />}
               <span className="picker-name">{e.name}</span>
               {e.isRepo && <span className="repo-badge">git</span>}
             </button>

@@ -24,6 +24,24 @@ export interface ClaudeThread {
 }
 
 export type CardStatus = 'idle' | 'working' | 'waiting'
+
+/** consumo acumulado de um chat, somado a cada turno a partir do result do SDK */
+export interface SessionUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  /** estimativa do SDK em dólares — serve de peso, não de fatura */
+  costUsd: number
+  turns: number
+  durationMs: number
+  /** tamanho da janela na última chamada do loop principal (quanto de contexto está em uso) */
+  context: number
+  /** teto da janela do modelo em uso; 0 = desconhecido */
+  contextWindow: number
+  /** desde quando este chat está sendo contado */
+  since: number
+}
 export type Attention = 'finished' | 'waiting' | null
 
 export interface SessionMeta {
@@ -48,6 +66,8 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
   lastError: string | null
+  /** consumo deste chat; ausente em sessões criadas antes da contagem existir */
+  usage?: SessionUsage | null
 }
 
 export type ActivityStatus = 'running' | 'done' | 'error'
