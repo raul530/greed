@@ -142,6 +142,31 @@ function readBudget(dir: string): number {
   return opt.readConfig(dir).WAKE_LINES
 }
 
+export function memoryLength(projectId: string): number {
+  return opt.logLen(ensure(projectId))
+}
+
+export function memorySince(
+  projectId: string,
+  from: number,
+  max = 24,
+): { text: string | null; length: number } {
+  const dir = ensure(projectId)
+  const length = opt.logLen(dir)
+  if (from < 0 || length <= from) return { text: null, length }
+  const entries = opt.logSlice(dir, Math.max(from, length - max), length)
+  if (entries.length === 0) return { text: null, length }
+  const skipped = length - from - entries.length
+  let out = `# Memória do projeto: ${length - from} fato(s) novo(s) desde o início desta sessão\n`
+  out +=
+    'Outro chat do mesmo projeto registrou isto enquanto você estava aberto. Vale como contexto de ' +
+    'fundo; se divergir do estado atual dos arquivos, o estado atual prevalece.\n'
+  if (skipped > 0) out += `(${skipped} mais antigos omitidos — use \`memory_recall\` se precisar)\n`
+  out += '\n'
+  for (const e of entries) out += `#${e.id} ${e.text}\n`
+  return { text: out, length }
+}
+
 /** Números da memória de um projeto, para diagnóstico. */
 export function memoryStats(projectId: string): {
   total: number

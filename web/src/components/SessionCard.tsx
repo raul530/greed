@@ -70,6 +70,7 @@ export function SessionCard(props: Props) {
   const [prevOpen, setPrevOpen] = useState<string | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
   const [renaming, setRenaming] = useState(false)
+  const [sendFailed, setSendFailed] = useState<'offline' | 'uploading' | null>(null)
   const act = useActivity(props.activity)
   const size = useCardSize(session.id)
   const prev = usePreview(session.id, session.status)
@@ -92,7 +93,15 @@ export function SessionCard(props: Props) {
 
   const submit = () => {
     const text = draft.trim()
-    if ((!text && ready.length === 0) || !connected || uploading) return
+    if (!text && ready.length === 0) return
+    if (uploading) {
+      setSendFailed('uploading')
+      return
+    }
+    if (!connected) {
+      setSendFailed('offline')
+      return
+    }
 
     // comandos que o Greed resolve sozinho — o resto desce pro Claude Code
     const [head, ...rest] = text.split(/\s+/)
@@ -113,8 +122,16 @@ export function SessionCard(props: Props) {
     if (props.onSend(text, att.payload())) {
       clearDraft()
       att.clear()
+      setSendFailed(null)
+    } else {
+      setSendFailed('offline')
     }
   }
+
+  useEffect(() => {
+    if (connected && sendFailed === 'offline') setSendFailed(null)
+    if (!uploading && sendFailed === 'uploading') setSendFailed(null)
+  }, [connected, uploading, sendFailed])
 
   const seen = () => {
     if (session.attention) props.onSeen()
@@ -323,6 +340,13 @@ export function SessionCard(props: Props) {
             onHover={setSlashIndex}
           />
         )}
+        {sendFailed && (
+          <div className="send-failed">
+            {sendFailed === 'uploading'
+              ? 'Esperando o anexo terminar de subir.'
+              : 'Sem conexão com o servidor. O texto continua aqui; ele reconecta sozinho, aí é só mandar de novo.'}
+          </div>
+        )}
         <div className="input-row">
           <button
             className="attach-btn"
@@ -400,7 +424,7 @@ export function SessionCard(props: Props) {
           <button
             className="send"
             onClick={submit}
-            disabled={(!draft.trim() && ready.length === 0) || !connected || uploading}
+            disabled={!draft.trim() && ready.length === 0}
             data-tip={
               uploading
                 ? 'Esperando o anexo subir…'
