@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FolderGit2,
   Lock,
+  Mail,
   Maximize2,
   Minimize2,
   Paperclip,
@@ -58,6 +59,8 @@ interface Props {
   onClose: () => void
   onToggleExpand: () => void
   onSeen: () => void
+  /** acende o card de novo, pra lembrar de voltar nele */
+  onMarkUnread: () => void
   onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
   onSetModel: (model: string | null) => void
   onSetEffort: (effort: string | null) => void
@@ -255,6 +258,19 @@ export function SessionCard(props: Props) {
               <span className={`status-dot ${session.status}`} />
               <span className="card-status-label">{STATUS_LABEL[session.status]}</span>
             </span>
+            {session.status === 'idle' && !session.attention && (
+              <button
+                className="icon"
+                data-tip="Marcar como não lido — o card acende de novo"
+                onClick={(e) => {
+                  // com o foco dentro do card a atenção apagaria sozinha
+                  e.currentTarget.blur()
+                  props.onMarkUnread()
+                }}
+              >
+                <Mail size={14} />
+              </button>
+            )}
             {session.status === 'working' && (
               <button className="icon stop" data-tip="Interromper o turno agora" onClick={props.onInterrupt}>
                 <Square size={11} fill="currentColor" strokeWidth={0} />
