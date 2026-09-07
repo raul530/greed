@@ -85,6 +85,12 @@ function normalizeCodebase(input?: string | null): string | null {
   }
 }
 
+/** o turno falou deste arquivo? Pelo nome com extensão, que é como ele aparece em comando, tool e resposta. */
+function mentioned(hay: string, f: { rel: string; abs?: string }): boolean {
+  const name = path.basename(f.rel).toLowerCase()
+  return hay.includes(name) || hay.includes(f.rel.toLowerCase())
+}
+
 function mtimeOf(file: string): number {
   try {
     return fs.statSync(file).mtimeMs
@@ -239,6 +245,19 @@ interface LiveSession {
   memoryLen: number
   /** parte do consumo deste query() que já foi somada em session.usage (o result traz o acumulado) */
   usageReported: UsageTotals
+  /** tudo que passou pelo turno (fala, input e saída de tool): é como se sabe que um arquivo é deste chat */
+  turnText: string[]
+  turnTextLen: number
+}
+
+/** teto do texto guardado por turno; passou disso, o resto não entra na busca */
+const TURN_TEXT_MAX = 600_000
+
+function noteTurn(live: LiveSession, text: string): void {
+  if (!text || live.turnTextLen >= TURN_TEXT_MAX) return
+  const piece = text.length > 20_000 ? text.slice(0, 20_000) : text
+  live.turnText.push(piece)
+  live.turnTextLen += piece.length
 }
 
 export class SessionManager {
@@ -259,6 +278,8 @@ export class SessionManager {
   private authored = new Map<string, { files: Set<string>; last: string[] }>()
   /** início do turno em curso: o que mexer daí pra frente é obra deste chat */
   private turnStart = new Map<string, number>()
+  /** fim do último turno por sessão: diz se dois chats da mesma pasta trabalharam ao mesmo tempo */
+  private turnEnd = new Map<string, number>()
 
   constructor(
     private hub: Hub,
@@ -282,6 +303,49 @@ export class SessionManager {
         last: Array.isArray(rec.last) ? rec.last : [],
       })
     }
+    this.reconcileAuthored()
+  }
+
+  /**
+   * Limpa o que a anotação antiga (só por mtime) espalhou: um arquivo que está
+   * em dois chats da mesma pasta fica só nos que falam dele no transcript. Se
+   * nenhum fala, não dá pra decidir e fica como está.
+   */
+  private reconcileAuthored(): void {
+    const owners = new Map<string, string[]>()
+    for (const [id, rec] of this.authored) {
+      for (const abs of rec.files) (owners.get(abs) ?? owners.set(abs, []).get(abs)!).push(id)
+    }
+    const hayOf = new Map<string, string>()
+    const hay = (id: string) => {
+      let h = hayOf.get(id)
+      if (h === undefined) {
+        h = this.transcript(id)
+          .map((e) => {
+            if (e.kind === 'tool') return `${e.summary}\n${e.result ?? ''}`
+            return 'text' in e ? e.text : ''
+          })
+          .join('\n')
+          .toLowerCase()
+        hayOf.set(id, h)
+      }
+      return h
+    }
+    let changed = false
+    for (const [abs, ids] of owners) {
+      if (ids.length < 2) continue
+      const name = path.basename(abs).toLowerCase()
+      const speak = ids.filter((id) => hay(id).includes(name))
+      if (speak.length === 0 || speak.length === ids.length) continue
+      for (const id of ids) {
+        if (speak.includes(id)) continue
+        const rec = this.authored.get(id)!
+        rec.files.delete(abs)
+        rec.last = rec.last.filter((f) => f !== abs)
+        changed = true
+      }
+    }
+    if (changed) this.saveAuthored()
   }
 
   snapshot(): ServerMsg {
@@ -431,6 +495,9 @@ export class SessionManager {
     const fresh = memorySince(session.projectId, live.memoryLen)
     live.memoryLen = fresh.length
     this.turnStart.set(sessionId, now())
+    live.turnText = []
+    live.turnTextLen = 0
+    noteTurn(live, forModel)
     live.queue.push({
       type: 'user',
       message: { role: 'user', content: fresh.text ? `${fresh.text}\n---\n\n${forModel}` : forModel },
@@ -465,6 +532,14 @@ export class SessionManager {
   markRead(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session && session.attention) this.touch(session, { attention: null })
+  }
+
+  /** volta a acender o card: pra deixar marcado o que ainda precisa de você */
+  markUnread(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const attention = session.status === 'waiting' ? 'waiting' : 'finished'
+    if (session.attention !== attention) this.touch(session, { attention })
   }
 
   /** caminho da pasta (working dir) do projeto de uma sessão, para salvar anexos. */
@@ -566,15 +641,28 @@ export class SessionManager {
    * começou. É por mtime, não por tool: pega tanto o Write quanto o pdf que
    * saiu de um script no Bash, que é como a maioria dos entregáveis nasce.
    */
-  private recordAuthored(sessionId: string): void {
+  private recordAuthored(sessionId: string, live: LiveSession): void {
     const since = this.turnStart.get(sessionId)
     this.turnStart.delete(sessionId)
+    this.turnEnd.set(sessionId, now())
     if (!since) return
     const roots = this.previewRootsForSession(sessionId)
     if (roots.length === 0) return
     const mine = this.authoredFor(sessionId)
+    // outro chat mexeu nas mesmas pastas enquanto este turno rodava? Aí mtime
+    // sozinho não diz de quem é o arquivo: só entra o que este turno nomeou
+    // (caminho do Write, comando, saída de tool ou a própria resposta)
+    const crowded = [...this.sessions.keys()].some((other) => {
+      if (other === sessionId) return false
+      const active = this.turnStart.has(other) || (this.turnEnd.get(other) ?? 0) >= since
+      if (!active) return false
+      const theirs = this.previewRootsForSession(other)
+      return theirs.some((r) => roots.includes(r))
+    })
+    const hay = crowded ? live.turnText.join('\n').toLowerCase() : ''
     const batch = findAllFiles(roots)
       .filter((f) => f.abs && f.mtime >= since)
+      .filter((f) => !crowded || mentioned(hay, f))
       .map((f) => f.abs as string)
     // turno sem entregável (uma pergunta, um ajuste no código) não apaga a leva
     // anterior da barra: o que ele fez no turno passado continua à mão
@@ -1001,6 +1089,8 @@ export class SessionManager {
       activity: new Map(),
       memoryLen: memoryLength(session.projectId),
       usageReported: { ...ZERO_TOTALS },
+      turnText: [],
+      turnTextLen: 0,
     }
     this.live.set(session.id, live)
     // aproveita a sessão viva pra manter a lista de comandos desta pasta em dia
@@ -1168,6 +1258,7 @@ export class SessionManager {
             is_error?: boolean
           }
           if (b.type !== 'tool_result' || !b.tool_use_id) continue
+          noteTurn(live, typeof b.content === 'string' ? b.content : JSON.stringify(b.content))
           const isErr = b.is_error === true
           const preview = truncate(
             typeof b.content === 'string' ? b.content : JSON.stringify(b.content),
@@ -1227,6 +1318,10 @@ export class SessionManager {
         // mensagem de subagente: o texto dele não vai pro transcript, mas as tools
         // que ele chama alimentam a árvore de atividade e a tela de Agentes
         const nested = Boolean(msg.parent_tool_use_id)
+        for (const block of msg.message.content) {
+          if (block.type === 'text' && !nested) noteTurn(live, block.text)
+          else if (block.type === 'tool_use') noteTurn(live, JSON.stringify(block.input))
+        }
         if (!nested) {
           // janela em uso = tudo que entrou nesta chamada (novo + cache); vai pro card no result
           const u = msg.message.usage
@@ -1304,7 +1399,7 @@ export class SessionManager {
           }
         }
         this.clearActivity(sessionId, live)
-        this.recordAuthored(sessionId)
+        this.recordAuthored(sessionId, live)
         this.fleet.endRun(sessionId, msg.subtype === 'success' ? 'ok' : 'error')
         this.foldUsage(session, live, msg)
         if (msg.subtype !== 'success') {

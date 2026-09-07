@@ -78,6 +78,7 @@ the Host/Origin allowlist stops browsers from being tricked into talking to gree
 - delete: ✕ in history throws a chat away for good, transcript included. it asks first.
 - resizable cards: drag the bottom right corner. the card takes exactly the size you drag, width and height, and the others move around it while you drag. the size sticks per chat.
 - themes: four dark (orange, purple, green, solarized) and four light (paper, sage, lilac, solarized). the theme button in the topbar shows the mode and the swatch in use; it opens a panel where you pick the mode (auto, dark, light) and one theme of each kind. on auto greed follows the os appearance, so it goes light by day and dark at sunset on its own.
+- mark as unread: the envelope icon on an idle card lights it up again, so you can leave it flagged for later. any click on the card clears it, as usual.
 - reset layout: the grid button in the topbar puts every card back at the default size (and un-expands the expanded one). it only lights up when some card has been resized.
 - per-chat consumption: the gauge chip in the composer bar shows the tokens this chat has used and how full its context window is; click it for input, output, cache, turns, model time and the sdk's cost estimate. counting starts on the first turn after this feature exists, so older chats begin at zero.
 - icons: the ui uses one icon set (lucide) and no emojis.

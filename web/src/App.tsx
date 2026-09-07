@@ -391,6 +391,7 @@ export function App() {
               }}
               onToggleExpand={() => setExpandedId(expandedId === s.id ? null : s.id)}
               onSeen={() => send({ type: 'mark_read', sessionId: s.id })}
+              onMarkUnread={() => send({ type: 'mark_unread', sessionId: s.id })}
               onPermission={(requestId, behavior) =>
                 send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
               }
