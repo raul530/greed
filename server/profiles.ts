@@ -53,15 +53,19 @@ export function defaultProfileDir(): string | null {
 }
 
 /**
- * Env dos processos do SDK: auth pela assinatura (nunca API key) e sempre com o
- * perfil explícito em CLAUDE_CONFIG_DIR — sem ele o CLI cai na credencial
- * legada (chaveiro sem sufixo), que expira quando você só usa perfis nomeados.
+ * Env dos processos do SDK: auth pela assinatura (nunca API key).
+ *
+ * CLAUDE_CONFIG_DIR só entra quando o perfil NÃO é o padrão (~/.claude): com a
+ * variável setada o CLI procura a credencial do perfil nomeado e ignora a
+ * credencial padrão do chaveiro ("Claude Code-credentials"), o que derruba a
+ * sessão com `authentication_failed` / "Not logged in" mesmo com login válido.
  */
 export function envForProfile(profileDir: string | null): Record<string, string | undefined> {
   const dir = profileDir ?? defaultProfileDir()
+  const isDefault = !dir || path.resolve(dir) === path.join(os.homedir(), '.claude')
   return {
     ...process.env,
     ANTHROPIC_API_KEY: undefined,
-    ...(dir ? { CLAUDE_CONFIG_DIR: dir } : {}),
+    ...(isDefault ? { CLAUDE_CONFIG_DIR: undefined } : { CLAUDE_CONFIG_DIR: dir }),
   }
 }
