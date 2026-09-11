@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -52,13 +54,35 @@ export function defaultProfileDir(): string | null {
   return listProfiles()[0]?.dir ?? null
 }
 
+const KEYCHAIN = 'Claude Code-credentials'
+
+function keychainExpiry(service: string): number {
+  try {
+    const raw = execFileSync('security', ['find-generic-password', '-s', service, '-w'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    const oauth = (JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string; expiresAt?: number } })
+      .claudeAiOauth
+    return oauth?.accessToken ? (oauth.expiresAt ?? 0) : -1
+  } catch {
+    return -1
+  }
+}
+
+function loginIsScoped(dir: string): boolean {
+  if (process.platform !== 'darwin') return false
+  const scoped = `${KEYCHAIN}-${crypto.createHash('sha256').update(dir).digest('hex').slice(0, 8)}`
+  return keychainExpiry(scoped) > keychainExpiry(KEYCHAIN)
+}
+
 /**
  * Env dos processos do SDK: auth pela assinatura (nunca API key).
  *
- * CLAUDE_CONFIG_DIR só entra quando o perfil NÃO é o padrão (~/.claude): com a
- * variável setada o CLI procura a credencial do perfil nomeado e ignora a
- * credencial padrão do chaveiro ("Claude Code-credentials"), o que derruba a
- * sessão com `authentication_failed` / "Not logged in" mesmo com login válido.
+ * No macOS o login de ~/.claude fica em "Claude Code-credentials" (quem roda
+ * `claude` puro) ou em "Claude Code-credentials-<hash da pasta>" (quem roda com
+ * CLAUDE_CONFIG_DIR=~/.claude). O CLI só lê a segunda com a variável setada, então
+ * no perfil padrão ela entra só quando essa entrada é a mais nova.
  */
 export function envForProfile(profileDir: string | null): Record<string, string | undefined> {
   const dir = profileDir ?? defaultProfileDir()
@@ -66,6 +90,6 @@ export function envForProfile(profileDir: string | null): Record<string, string 
   return {
     ...process.env,
     ANTHROPIC_API_KEY: undefined,
-    ...(isDefault ? { CLAUDE_CONFIG_DIR: undefined } : { CLAUDE_CONFIG_DIR: dir }),
+    CLAUDE_CONFIG_DIR: dir && (!isDefault || loginIsScoped(dir)) ? dir : undefined,
   }
 }
