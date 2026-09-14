@@ -1256,6 +1256,13 @@ kbd {
   gap: 10px;
 }
 
+/* o transcript rola, não espreme: nenhuma linha cede altura pro flex. Sem isto,
+   linhas com overflow hidden (tool-line) encolhiam até 0px quando o turno
+   passava da altura do card, e cada tool virava só o gap de 10px em branco */
+.transcript > * {
+  flex: none;
+}
+
 .msg-user {
   align-self: flex-end;
   max-width: 85%;
