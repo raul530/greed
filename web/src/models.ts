@@ -8,13 +8,15 @@ export const MODELS: Option[] = [
   { value: '', label: 'Padrão' },
   { value: 'claude-fable-5-1', label: 'Fable 5.1' },
   { value: 'claude-fable-5', label: 'Fable 5' },
+  { value: 'claude-opus-5-5', label: 'Opus 5.5' },
   { value: 'claude-opus-5', label: 'Opus 5' },
   { value: 'claude-opus-4-8', label: 'Opus 4.8' },
   { value: 'claude-sonnet-5', label: 'Sonnet 5' },
   { value: 'claude-haiku-4-5', label: 'Haiku 4.5' },
 ]
 
-// Esforço de raciocínio. Padrão do SDK é 'high'. 'max' = mais raciocínio e consumo.
+// Esforço de raciocínio. O padrão depende do modelo ('high' na maioria, 'medium' no Opus 5.5).
+// 'max' = mais raciocínio e consumo.
 export const EFFORTS: Option[] = [
   { value: '', label: 'Padrão' },
   { value: 'low', label: 'Baixo' },

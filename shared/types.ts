@@ -52,7 +52,7 @@ export interface SessionMeta {
   sdkSessionId: string | null
   /** id do modelo (ex.: 'claude-opus-5', 'claude-fable-5'); null = padrão da assinatura */
   model: string | null
-  /** nível de esforço/raciocínio ('low'..'max'); null = padrão do modelo (high) */
+  /** nível de esforço/raciocínio ('low'..'max'); null = padrão do modelo */
   effort: string | null
   /** política de permissão: 'default' (pergunta) | 'acceptEdits' | 'bypassPermissions' (não pergunta) */
   permissionMode: string
