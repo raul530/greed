@@ -274,6 +274,20 @@ export interface InsightsReport {
   characteristics: InsightBucket[]
 }
 
+/** os últimos 30 dias em números grandes, lidos dos mesmos transcripts dos insights */
+export interface MonthReport {
+  generatedAt: number
+  /** tudo que passou pelo modelo, contando leitura de cache */
+  tokens: number
+  /** o que o modelo escreveu */
+  output: number
+  calls: number
+  /** sessões distintas: cards do Greed e threads do terminal */
+  chats: number
+  /** um por dia, do mais antigo até hoje; `day` é a meia-noite local */
+  days: { day: number; tokens: number }[]
+}
+
 export type ClientMsg =
   | {
       type: 'user_message'

@@ -1,4 +1,4 @@
-// De onde saiu o consumo das últimas 24 h.
+// De onde saiu o consumo das últimas 24 h (ou 7 d), e os números grandes dos 30 dias.
 //
 // O endpoint de limites só devolve percentual, então token tem que vir de outro
 // lugar: os transcripts que o Claude Code grava em ~/.claude/projects/**.jsonl.
@@ -9,13 +9,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
-import type { InsightBucket, InsightsReport, UsageRow } from '../shared/types'
+import type { InsightBucket, InsightsReport, MonthReport, UsageRow } from '../shared/types'
 
 const ROOT = path.join(os.homedir(), '.claude', 'projects')
 /** folga sobre a janela pedida: um arquivo pode ter parado de crescer antes do corte */
 const SCAN_SLACK_MS = 6 * 60 * 60 * 1000
-/** teto do cache de arquivos já lidos; passou disso, esvazia e lê de novo */
-const CACHE_MAX = 400
+const DAY_MS = 24 * 60 * 60 * 1000
+/** dias do painel de 30 dias, hoje incluso */
+const MONTH_DAYS = 30
+/** arquivo parado há mais que a janela mais longa não entra em leitura nenhuma: sai do cache */
+const CACHE_KEEP_MS = (MONTH_DAYS + 1) * DAY_MS + SCAN_SLACK_MS
 /**
  * Peso relativo por tipo de token (referência pública da Anthropic): saída custa
  * ~5x a entrada, escrita de cache ~1,25x e leitura de cache ~0,1x. Serve pra
@@ -38,6 +41,11 @@ interface Entry {
   context: number
 }
 
+/** tudo que passou pelo modelo nessa chamada, contando cache */
+function tokensOf(e: Entry): number {
+  return e.input + e.output + e.cacheRead + e.cacheWrite
+}
+
 function weigh(e: Entry): number {
   return (
     e.input * WEIGHT.input +
@@ -52,7 +60,8 @@ function weigh(e: Entry): number {
 interface CachedFile {
   mtimeMs: number
   size: number
-  entries: Entry[]
+  /** promessa: dois painéis pedindo ao mesmo tempo dividem a mesma leitura */
+  entries: Promise<Entry[]>
 }
 const cache = new Map<string, CachedFile>()
 
@@ -155,19 +164,17 @@ async function parseFile(file: string): Promise<Entry[]> {
 async function collect(now: number, windowMs: number): Promise<Entry[]> {
   // a varredura acompanha a janela pedida: 7 d não pode olhar só o que mexeu hoje
   const files = listTranscripts(now, windowMs + SCAN_SLACK_MS)
-  if (cache.size > CACHE_MAX) cache.clear()
+  for (const [file, c] of cache) if (now - c.mtimeMs > CACHE_KEEP_MS) cache.delete(file)
   const out: Entry[] = []
+  const cut = now - windowMs
   for (const f of files) {
-    const hit = cache.get(f.file)
-    let entries: Entry[]
-    if (hit && hit.mtimeMs === f.mtimeMs && hit.size === f.size) {
-      entries = hit.entries
-    } else {
-      entries = await parseFile(f.file)
-      cache.set(f.file, { mtimeMs: f.mtimeMs, size: f.size, entries })
+    let hit = cache.get(f.file)
+    if (!hit || hit.mtimeMs !== f.mtimeMs || hit.size !== f.size) {
+      // arquivo que sumiu no meio da leitura só não conta
+      hit = { mtimeMs: f.mtimeMs, size: f.size, entries: parseFile(f.file).catch(() => []) }
+      cache.set(f.file, hit)
     }
-    const cut = now - windowMs
-    for (const e of entries) if (e.ts >= cut) out.push(e)
+    for (const e of await hit.entries) if (e.ts >= cut) out.push(e)
   }
   return out
 }
@@ -186,7 +193,7 @@ function rank(
     if (key == null) continue
     const cur = acc.get(key) ?? { label: labelOf(key, e), weight: 0, tokens: 0, calls: 0 }
     cur.weight += weigh(e)
-    cur.tokens += e.input + e.output + e.cacheRead + e.cacheWrite
+    cur.tokens += tokensOf(e)
     cur.calls += 1
     acc.set(key, cur)
   }
@@ -235,7 +242,7 @@ export async function buildInsights(
   }
 
   const totalWeight = entries.reduce((a, e) => a + weigh(e), 0)
-  const tokens = entries.reduce((a, e) => a + e.input + e.output + e.cacheRead + e.cacheWrite, 0)
+  const tokens = entries.reduce((a, e) => a + tokensOf(e), 0)
 
   // característica: quanto do peso rodou com a janela já grande
   const longWeight = entries.filter((e) => e.context > LONG_CONTEXT).reduce((a, e) => a + weigh(e), 0)
@@ -288,4 +295,31 @@ export async function buildInsights(
     ),
     characteristics,
   }
+}
+
+/** Os últimos 30 dias, dia a dia (meia-noite local): o painel de números grandes do Consumo. */
+export async function buildMonth(now = Date.now()): Promise<MonthReport> {
+  const first = new Date(now)
+  first.setHours(0, 0, 0, 0)
+  first.setDate(first.getDate() - (MONTH_DAYS - 1))
+  const days = Array.from({ length: MONTH_DAYS }, (_, i) => {
+    const d = new Date(first)
+    d.setDate(first.getDate() + i)
+    return { day: d.getTime(), tokens: 0 }
+  })
+  // chave pela data do calendário, não pelo ms da meia-noite: horário de verão não desalinha
+  const byDate = new Map(days.map((d) => [new Date(d.day).toDateString(), d]))
+  const chats = new Set<string>()
+  const report: MonthReport = { generatedAt: now, tokens: 0, output: 0, calls: 0, chats: 0, days }
+  for (const e of await collect(now, now - first.getTime())) {
+    const day = byDate.get(new Date(e.ts).toDateString())
+    if (!day) continue // relógio adiantado: chamada "de amanhã"
+    day.tokens += tokensOf(e)
+    report.tokens += tokensOf(e)
+    report.output += e.output
+    report.calls += 1
+    chats.add(e.sessionId)
+  }
+  report.chats = chats.size
+  return report
 }

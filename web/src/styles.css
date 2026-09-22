@@ -4001,16 +4001,84 @@ kbd {
 
 /* ── insights: de onde saiu o consumo ───────────────── */
 
-/* posição fixa no bento: insights sempre embaixo do histórico, na coluna da
-   direita. O canto de baixo à esquerda fica vazio até escolherem um limite —
-   nada aqui se estica pra ocupar buraco. */
+/* posição fixa no bento: os 30 dias numa faixa de ponta a ponta no topo;
+   insights sempre embaixo do histórico, na coluna da direita. O canto de baixo
+   à esquerda fica vazio até escolherem um limite — nada aqui se estica pra
+   ocupar buraco. */
+.usage-panel.month {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
 .usage-panel.insights {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
 }
 .usage-panel.detail {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 3;
+}
+
+/* ── 30 dias: números grandes pra ostentar ───────────── */
+
+.month-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.month-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+}
+.month-tile i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.month-tile b {
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--primary);
+  text-shadow: 0 0 18px rgba(var(--glow-rgb), 0.3);
+}
+.month-tile small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.month-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  margin-top: 12px;
+}
+/* a coluna inteira é o alvo do tooltip, não só a barra (dia fraco vira fio) */
+.month-day {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.month-day i {
+  width: 100%;
+  min-height: 1px;
+  background: var(--muted);
+  opacity: 0.5;
+  border-radius: 2px 2px 0 0;
+}
+.month-day:hover i {
+  opacity: 0.9;
+}
+.month-day.today i {
+  background: var(--primary);
+  opacity: 1;
 }
 .insights-src {
   margin: 0 0 14px;
@@ -4247,10 +4315,15 @@ kbd {
   }
 
   /* coluna única: cada painel volta a cair na ordem do documento */
+  .usage-panel.month,
   .usage-panel.insights,
   .usage-panel.detail {
     grid-column: auto;
     grid-row: auto;
+  }
+
+  .month-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .telemetry {

@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws'
 import type { MsgAttachment, UsageSnapshot } from '../shared/types'
 import { commandsFor } from './commands'
 import { Hub } from './hub'
-import { buildInsights } from './insights'
+import { buildInsights, buildMonth } from './insights'
 import { SessionManager } from './manager'
 import { warmMemory } from './memory'
 import { createHostGuard } from './net'
@@ -119,6 +119,15 @@ app.get('/api/insights', async (req, res) => {
     const hours = Math.min(168, Math.max(1, Number(req.query.hours ?? 24) || 24))
     const report = await buildInsights(manager.cardsBySdkSession(), hours * 60 * 60 * 1000)
     res.json(report)
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// os últimos 30 dias em números grandes, dos mesmos transcripts (e do mesmo cache)
+app.get('/api/insights/month', async (_req, res) => {
+  try {
+    res.json(await buildMonth())
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
   }

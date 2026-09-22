@@ -2,12 +2,13 @@ import { Gauge } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionUsage } from '../../../shared/types'
 
-/** 950 → "950", 4200 → "4.2k", 142000 → "142k", 1300000 → "1.30M" */
+/** 950 → "950", 4200 → "4.2k", 142000 → "142k", 1300000 → "1.30M", 2e9 → "2.00B" */
 export function fmtTokens(n: number): string {
   if (n < 1000) return String(Math.round(n))
   if (n < 10_000) return `${(n / 1000).toFixed(1)}k`
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`
-  return `${(n / 1_000_000).toFixed(2)}M`
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  return `${(n / 1_000_000_000).toFixed(2)}B`
 }
 
 function fmtUsd(n: number): string {

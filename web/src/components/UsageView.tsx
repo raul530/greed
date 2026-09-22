@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Profile, UsageLimit, UsageSample, UsageSnapshot } from '../../../shared/types'
 import { api } from '../api'
 import { UsageInsights } from './UsageInsights'
+import { UsageMonth } from './UsageMonth'
 
 interface Props {
   usage: UsageSnapshot | null
@@ -546,6 +547,7 @@ export function UsageView({ usage: wsUsage, error: wsError, profiles, defaultPro
 
   return (
     <main className="usage">
+      <UsageMonth />
       <section className="usage-panel">
         <header className="usage-head">
           <h2>Consumo da assinatura</h2>

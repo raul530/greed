@@ -2,6 +2,7 @@ import type {
   BtwExchange,
   ClaudeThread,
   InsightsReport,
+  MonthReport,
   MsgAttachment,
   Profile,
   Project,
@@ -115,6 +116,7 @@ export const api = {
     j<UsageSnapshot>(`/api/usage${profile ? `?profile=${encodeURIComponent(profile)}` : ''}`),
   // de onde saiu o consumo, lido dos transcripts locais
   insights: (hours: number) => j<InsightsReport>(`/api/insights?hours=${hours}`),
+  month: () => j<MonthReport>('/api/insights/month'),
   uploadAttachment: (sessionId: string, file: File) =>
     upload(`/api/sessions/${encodeURIComponent(sessionId)}/attachments`, file),
   // anexo antes da sessão existir (modal de novo chat): vai direto pro projeto
