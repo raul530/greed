@@ -60,8 +60,14 @@ function capRecord<T>(rows: Record<string, T>, cap: number, keep: number, at: (v
 
 export type Action = { type: 'ws_status'; connected: boolean } | { type: 'server'; msg: ServerMsg }
 
+/** busca de trás pra frente: quem muda é quase sempre a última entrada */
+function indexOfEntry(entries: TranscriptEntry[], id: string): number {
+  for (let i = entries.length - 1; i >= 0; i--) if (entries[i].id === id) return i
+  return -1
+}
+
 function upsertEntry(entries: TranscriptEntry[], entry: TranscriptEntry): TranscriptEntry[] {
-  const i = entries.findIndex((e) => e.id === entry.id)
+  const i = indexOfEntry(entries, entry.id)
   if (i === -1) return [...entries, entry]
   const next = entries.slice()
   next[i] = entry
@@ -117,7 +123,7 @@ export function reducer(state: ClientState, action: Action): ClientState {
     }
     case 'delta': {
       const entries = state.transcripts[msg.sessionId] ?? []
-      const i = entries.findIndex((e) => e.id === msg.entryId)
+      const i = indexOfEntry(entries, msg.entryId)
       let next: TranscriptEntry[]
       if (i === -1) {
         next = [

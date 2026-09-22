@@ -1,5 +1,5 @@
 import { Brain, Check, Clock, Paperclip, Wrench, X } from 'lucide-react'
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { TranscriptEntry } from '../../../shared/types'
 import { Markdown } from './Markdown'
 
@@ -117,9 +117,21 @@ interface Props {
   working: boolean
 }
 
-export function Transcript({ entries, pending, working }: Props) {
+/**
+ * Quantas entradas o card desenha de cara. Chat longo tem milhares, e desenhar
+ * todas deixa cada token e cada tecla lentos; o resto vem pelo botão.
+ */
+const PAGE = 200
+
+export const Transcript = memo(function Transcript({ entries, pending, working }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   const stick = useRef(true)
+  // o começo da janela fica parado: entrada nova entra embaixo e nada some de
+  // cima enquanto você lê. null = ainda sem transcript (card reaberto antes de
+  // ele chegar), aí o corte é feito quando chegar
+  const [from, setFrom] = useState<number | null>(() => startOf(entries))
+  if (from === null && entries.length > 0) setFrom(startOf(entries))
+  const start = Math.min(from ?? 0, startOf(entries) ?? 0)
 
   const onScroll = () => {
     const el = ref.current
@@ -134,7 +146,12 @@ export function Transcript({ entries, pending, working }: Props) {
 
   return (
     <div className="transcript" ref={ref} onScroll={onScroll}>
-      {entries.map((e) => (
+      {start > 0 && (
+        <button className="transcript-more" onClick={() => setFrom(Math.max(0, start - PAGE))}>
+          mostrar anteriores ({start} ocultas)
+        </button>
+      )}
+      {entries.slice(start).map((e) => (
         <Entry key={e.id} entry={e} />
       ))}
       {working && !pending && (
@@ -146,4 +163,8 @@ export function Transcript({ entries, pending, working }: Props) {
       )}
     </div>
   )
+})
+
+function startOf(entries: TranscriptEntry[]): number | null {
+  return entries.length > 0 ? Math.max(0, entries.length - PAGE) : null
 }

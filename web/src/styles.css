@@ -1426,6 +1426,11 @@ kbd {
   text-align: center;
 }
 
+.transcript-more {
+  align-self: center;
+  color: var(--muted);
+}
+
 .error-line {
   font-size: 12px;
   color: var(--glow);

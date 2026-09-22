@@ -18,6 +18,8 @@ import { initialState, reducer } from './store'
 import { connectWS, type WSHandle } from './ws'
 
 const HIDDEN_KEY = 'greed:hiddenProjects'
+/** lista vazia com identidade fixa: um `[]` novo a cada render furaria o memo do card */
+const NONE: never[] = []
 
 /** telas da HUD — o board é a de sempre; as outras entram aqui */
 const VIEWS = [
@@ -114,6 +116,30 @@ export function App() {
 
   const call = useCallback((p: Promise<unknown>) => {
     p.catch((err) => console.error('[greed] ação falhou:', err))
+  }, [])
+
+  // estáveis de propósito: o SessionCard é memo e só redesenha quando os dados dele mudam
+  const openBtw = useCallback(
+    (sessionId: string, text: string) => {
+      setBtwSession(sessionId)
+      if (text) send({ type: 'btw', sessionId, text })
+    },
+    [send],
+  )
+  const closeCard = useCallback(
+    (sessionId: string) => {
+      setExpandedId((cur) => (cur === sessionId ? null : cur))
+      call(api.closeSession(sessionId))
+    },
+    [call],
+  )
+  const toggleExpand = useCallback(
+    (sessionId: string) => setExpandedId((cur) => (cur === sessionId ? null : sessionId)),
+    [],
+  )
+  const registerInput = useCallback((sessionId: string, el: HTMLTextAreaElement | null) => {
+    if (el) inputRefs.current.set(sessionId, el)
+    else inputRefs.current.delete(sessionId)
   }, [])
 
   const openSessions = useMemo(
@@ -371,46 +397,19 @@ export function App() {
             <SessionCard
               key={s.id}
               session={s}
-              entries={state.transcripts[s.id] ?? []}
-              permissions={state.permissions[s.id] ?? []}
-              activity={state.activity[s.id] ?? []}
+              entries={state.transcripts[s.id] ?? NONE}
+              permissions={state.permissions[s.id] ?? NONE}
+              activity={state.activity[s.id] ?? NONE}
               index={i}
               expanded={expanded === s.id}
               connected={state.connected}
-              onSend={(text, attachments) =>
-                send({ type: 'user_message', sessionId: s.id, text, attachments })
-              }
-              onBtw={(text) => {
-                setBtwSession(s.id)
-                if (text) send({ type: 'btw', sessionId: s.id, text })
-              }}
-              onInterrupt={() => send({ type: 'interrupt', sessionId: s.id })}
-              onClose={() => {
-                if (expandedId === s.id) setExpandedId(null)
-                call(api.closeSession(s.id))
-              }}
-              onToggleExpand={() => setExpandedId(expandedId === s.id ? null : s.id)}
-              onSeen={() => send({ type: 'mark_read', sessionId: s.id })}
-              onMarkUnread={() => send({ type: 'mark_unread', sessionId: s.id })}
-              onPermission={(requestId, behavior) =>
-                send({ type: 'permission_response', sessionId: s.id, requestId, behavior })
-              }
-              onAnswer={(requestId, answers) =>
-                send({ type: 'question_response', sessionId: s.id, requestId, answers })
-              }
-              onRename={(title) => send({ type: 'set_title', sessionId: s.id, title })}
-              onSetModel={(model) => send({ type: 'set_model', sessionId: s.id, model })}
-              onSetEffort={(effort) => send({ type: 'set_effort', sessionId: s.id, effort })}
               profiles={profiles.list}
               defaultProfile={profiles.default}
-              onSetProfile={(profile) => send({ type: 'set_profile', sessionId: s.id, profile })}
-              onSetPermissionMode={(mode) =>
-                send({ type: 'set_permission_mode', sessionId: s.id, mode })
-              }
-              registerInput={(el) => {
-                if (el) inputRefs.current.set(s.id, el)
-                else inputRefs.current.delete(s.id)
-              }}
+              send={send}
+              onBtw={openBtw}
+              onClose={closeCard}
+              onToggleExpand={toggleExpand}
+              registerInput={registerInput}
             />
           ))}
         </main>

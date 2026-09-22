@@ -11,10 +11,10 @@ import {
   Square,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActivityItem,
-  MsgAttachment,
+  ClientMsg,
   PermissionRequest,
   Profile,
   SessionMeta,
@@ -44,6 +44,10 @@ import { AttachChips, useAttachments } from './useAttachments'
 import { useCardSize } from './useCardSize'
 import { useDraft } from './useDraft'
 
+/**
+ * Tudo que vem do App é dado ou função estável: o card é memo, e um token
+ * chegando num chat não redesenha os outros.
+ */
 interface Props {
   session: SessionMeta
   entries: TranscriptEntry[]
@@ -52,26 +56,15 @@ interface Props {
   index: number
   expanded: boolean
   connected: boolean
-  /** retorna true se a mensagem foi enviada (para o input só limpar no sucesso) */
-  onSend: (text: string, attachments: MsgAttachment[]) => boolean
-  /** /btw — pergunta de canto, vai pro console lateral e não entra no turno */
-  onBtw: (text: string) => void
-  onInterrupt: () => void
-  onClose: () => void
-  onToggleExpand: () => void
-  onSeen: () => void
-  /** acende o card de novo, pra lembrar de voltar nele */
-  onMarkUnread: () => void
-  onPermission: (requestId: string, behavior: 'allow' | 'deny') => void
-  onAnswer: (requestId: string, answers: Record<string, string>) => void
-  onSetModel: (model: string | null) => void
-  onSetEffort: (effort: string | null) => void
-  onSetPermissionMode: (mode: string) => void
-  onRename: (title: string) => void
   profiles: Profile[]
   defaultProfile: string | null
-  onSetProfile: (profile: string | null) => void
-  registerInput: (el: HTMLTextAreaElement | null) => void
+  /** manda pro servidor; false se o socket está fora (o input só limpa no sucesso) */
+  send: (m: ClientMsg) => boolean
+  /** /btw — abre o console lateral; com texto, já pergunta. Não entra no turno */
+  onBtw: (sessionId: string, text: string) => void
+  onClose: (sessionId: string) => void
+  onToggleExpand: (sessionId: string) => void
+  registerInput: (sessionId: string, el: HTMLTextAreaElement | null) => void
 }
 
 const STATUS_LABEL: Record<SessionMeta['status'], string> = {
@@ -83,8 +76,8 @@ const STATUS_LABEL: Record<SessionMeta['status'], string> = {
 /** o composer cresce com o texto até aqui; depois rola por dentro */
 const COMPOSER_MAX = 180
 
-export function SessionCard(props: Props) {
-  const { session, entries, permissions, index, expanded, connected } = props
+export const SessionCard = memo(function SessionCard(props: Props) {
+  const { session, entries, permissions, index, expanded, connected, send, registerInput } = props
   const { draft, setDraft, stale, onBlur, clear: clearDraft } = useDraft(session.id)
   const [dragging, setDragging] = useState(false)
   const [treeOpen, setTreeOpen] = useState(false)
@@ -102,13 +95,13 @@ export function SessionCard(props: Props) {
   const att = useAttachments((file) => api.uploadAttachment(session.id, file))
   const { addFiles, uploading, ready } = att
 
-  // o App troca a função a cada render; a ref evita re-registrar o textarea toda hora
-  const registerRef = useRef(props.registerInput)
-  registerRef.current = props.registerInput
-  const setTextarea = useCallback((el: HTMLTextAreaElement | null) => {
-    taRef.current = el
-    registerRef.current(el)
-  }, [])
+  const setTextarea = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      taRef.current = el
+      registerInput(session.id, el)
+    },
+    [registerInput, session.id],
+  )
 
   // composer cresce com o rascunho (e encolhe quando ele é enviado)
   useEffect(() => {
@@ -143,10 +136,10 @@ export function SessionCard(props: Props) {
     }
 
     // comandos que o Greed resolve sozinho — o resto desce pro Claude Code
-    const [head, ...rest] = text.split(/\s+/)
+    const head = text.split(/\s+/)[0]
     const arg = text.slice(head.length).trim()
     if (head === '/btw') {
-      props.onBtw(arg)
+      props.onBtw(session.id, arg)
       clearDraft()
       return
     }
@@ -156,9 +149,8 @@ export function SessionCard(props: Props) {
       clearDraft()
       return
     }
-    void rest
 
-    if (props.onSend(text, att.payload())) {
+    if (send({ type: 'user_message', sessionId: session.id, text, attachments: att.payload() })) {
       clearDraft()
       att.clear()
       setSendFailed(null)
@@ -172,15 +164,16 @@ export function SessionCard(props: Props) {
     if (!uploading && sendFailed === 'uploading') setSendFailed(null)
   }, [connected, uploading, sendFailed])
 
+  const markRead = () => send({ type: 'mark_read', sessionId: session.id })
   const seen = () => {
-    if (session.attention) props.onSeen()
+    if (session.attention) markRead()
   }
 
   // se a atenção acender enquanto o usuário já está com o card focado, apaga sozinha
   useEffect(() => {
     if (!session.attention) return
     const active = document.activeElement
-    if (active && rootRef.current?.contains(active)) props.onSeen()
+    if (active && rootRef.current?.contains(active)) markRead()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.attention])
 
@@ -224,7 +217,7 @@ export function SessionCard(props: Props) {
         }
       }}
     >
-      <header className="card-head" onDoubleClick={props.onToggleExpand}>
+      <header className="card-head" onDoubleClick={() => props.onToggleExpand(session.id)}>
         <div className="card-head-row">
           <div className="card-ident">
             <span className="card-project-name" title={session.projectName}>
@@ -267,25 +260,33 @@ export function SessionCard(props: Props) {
                 onClick={(e) => {
                   // com o foco dentro do card a atenção apagaria sozinha
                   e.currentTarget.blur()
-                  props.onMarkUnread()
+                  send({ type: 'mark_unread', sessionId: session.id })
                 }}
               >
                 <Mail size={14} />
               </button>
             )}
             {session.status === 'working' && (
-              <button className="icon stop" data-tip="Interromper o turno agora" onClick={props.onInterrupt}>
+              <button
+                className="icon stop"
+                data-tip="Interromper o turno agora"
+                onClick={() => send({ type: 'interrupt', sessionId: session.id })}
+              >
                 <Square size={11} fill="currentColor" strokeWidth={0} />
               </button>
             )}
             <button
               className="icon"
               data-tip={expanded ? 'Restaurar o tamanho do card' : 'Expandir o card na tela'}
-              onClick={props.onToggleExpand}
+              onClick={() => props.onToggleExpand(session.id)}
             >
               {expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
-            <button className="icon close" data-tip="Fechar — o chat vai pro histórico" onClick={props.onClose}>
+            <button
+              className="icon close"
+              data-tip="Fechar — o chat vai pro histórico"
+              onClick={() => props.onClose(session.id)}
+            >
               <X size={16} />
             </button>
           </div>
@@ -295,7 +296,7 @@ export function SessionCard(props: Props) {
             className="card-title-edit"
             value={session.title}
             onCommit={(next) => {
-              props.onRename(next)
+              send({ type: 'set_title', sessionId: session.id, title: next })
               setRenaming(false)
             }}
             onCancel={() => setRenaming(false)}
@@ -323,10 +324,17 @@ export function SessionCard(props: Props) {
           <QuestionDock
             request={permissions[0]}
             queued={permissions.length - 1}
-            onAnswer={props.onAnswer}
+            onAnswer={(requestId, answers) =>
+              send({ type: 'question_response', sessionId: session.id, requestId, answers })
+            }
           />
         ) : (
-          <PermissionDock permissions={permissions} onPermission={props.onPermission} />
+          <PermissionDock
+            permissions={permissions}
+            onPermission={(requestId, behavior) =>
+              send({ type: 'permission_response', sessionId: session.id, requestId, behavior })
+            }
+          />
         )}
         {treeOpen && <ActivityTree a={act} onClose={() => setTreeOpen(false)} />}
       </div>
@@ -452,7 +460,9 @@ export function SessionCard(props: Props) {
                     ? 'Conta desta sessão — troca só com o chat parado'
                     : 'Conta que paga esta sessão (troca vale no próximo turno)'
                 }
-                onChange={(e) => props.onSetProfile(e.target.value || null)}
+                onChange={(e) =>
+                  send({ type: 'set_profile', sessionId: session.id, profile: e.target.value || null })
+                }
               >
                 {props.profiles.map((p) => (
                   <option key={p.dir} value={p.dir} title={p.dir}>
@@ -468,7 +478,9 @@ export function SessionCard(props: Props) {
               className="model-select"
               value={session.model ?? ''}
               data-tip="Modelo desta sessão (vale a partir do próximo turno)"
-              onChange={(e) => props.onSetModel(e.target.value || null)}
+              onChange={(e) =>
+                send({ type: 'set_model', sessionId: session.id, model: e.target.value || null })
+              }
             >
               {MODELS.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -483,7 +495,9 @@ export function SessionCard(props: Props) {
               className="model-select effort-select"
               value={session.effort ?? ''}
               data-tip="Esforço de raciocínio (mais = mais consumo; vale no próximo turno)"
-              onChange={(e) => props.onSetEffort(e.target.value || null)}
+              onChange={(e) =>
+                send({ type: 'set_effort', sessionId: session.id, effort: e.target.value || null })
+              }
             >
               {EFFORTS.map((x) => (
                 <option key={x.value} value={x.value}>
@@ -501,9 +515,11 @@ export function SessionCard(props: Props) {
                 : 'Pede aprovação. Clique para rodar sem perguntar (autônomo).'
             }
             onClick={() =>
-              props.onSetPermissionMode(
-                session.permissionMode === 'bypassPermissions' ? 'default' : 'bypassPermissions',
-              )
+              send({
+                type: 'set_permission_mode',
+                sessionId: session.id,
+                mode: session.permissionMode === 'bypassPermissions' ? 'default' : 'bypassPermissions',
+              })
             }
           >
             {permShort(session.permissionMode)}
@@ -541,4 +557,4 @@ export function SessionCard(props: Props) {
       <span className="card-grip" aria-hidden="true" />
     </section>
   )
-}
+})

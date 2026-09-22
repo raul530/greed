@@ -17,12 +17,19 @@ function readJson<T>(file: string, fallback: T): T {
   }
 }
 
-function writeJson(file: string, value: unknown): void {
+function writeJson(file: string, value: unknown, indent = 2): void {
   const tmp = `${file}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2))
+  fs.writeFileSync(tmp, JSON.stringify(value, null, indent))
   fs.renameSync(tmp, file)
 }
 
+/**
+ * Transcript é reescrito inteiro a cada gravação, e chat longo passa de 10 MB:
+ * por isso a gravação junta tudo que mudou em 1 s, e sai sem indentação.
+ * Encerrar o servidor grava na hora (flush), então só uma morte à força
+ * (kill -9, falta de luz) perde esse último segundo.
+ */
+const FLUSH_MS = 1000
 const pendingTranscripts = new Map<string, TranscriptEntry[]>()
 let flushTimer: NodeJS.Timeout | null = null
 
@@ -31,12 +38,12 @@ function scheduleFlush(): void {
   flushTimer = setTimeout(() => {
     flushTimer = null
     flushTranscripts()
-  }, 250)
+  }, FLUSH_MS)
 }
 
 function flushTranscripts(): void {
   for (const [id, entries] of pendingTranscripts) {
-    writeJson(path.join(TRANSCRIPTS_DIR, `${id}.json`), entries)
+    writeJson(path.join(TRANSCRIPTS_DIR, `${id}.json`), entries, 0)
   }
   pendingTranscripts.clear()
 }

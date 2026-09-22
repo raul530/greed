@@ -132,6 +132,12 @@ function trimSet(set: Set<string>, max: number): Set<string> {
   return new Set([...set].slice(set.size - max))
 }
 
+/** entrada pelo id, de trás pra frente: quem muda é quase sempre uma das últimas */
+function findEntry(t: TranscriptEntry[], id: string): TranscriptEntry | undefined {
+  for (let i = t.length - 1; i >= 0; i--) if (t[i].id === id) return t[i]
+  return undefined
+}
+
 const WRITER_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 /** No shell, só o destino declarado conta: `> arq`, `-o arq`, `tee arq`. */
 const SHELL_OUT =
@@ -955,8 +961,8 @@ export class SessionManager {
 
   private replaceEntry(sessionId: string, entry: TranscriptEntry): void {
     const t = this.transcript(sessionId)
-    const i = t.findIndex((e) => e.id === entry.id)
-    if (i >= 0) t[i] = entry
+    const cur = findEntry(t, entry.id)
+    if (cur) t[t.lastIndexOf(cur)] = entry
     else t.push(entry)
     store.saveTranscript(sessionId, t)
     this.hub.broadcast({ type: 'entry', sessionId, entry })
@@ -1293,8 +1299,7 @@ export class SessionManager {
             typeof b.content === 'string' ? b.content : JSON.stringify(b.content),
             200,
           )
-          const t = this.transcript(sessionId)
-          const cur = t.find((e) => e.id === b.tool_use_id)
+          const cur = findEntry(this.transcript(sessionId), b.tool_use_id)
           if (cur && cur.kind === 'tool') {
             this.replaceEntry(sessionId, {
               ...cur,
@@ -1327,7 +1332,7 @@ export class SessionManager {
             })
           } else {
             const t = this.transcript(sessionId)
-            const cur = t.find((e) => e.id === live.currentAssistantId)
+            const cur = findEntry(t, live.currentAssistantId)
             if (cur && cur.kind === 'assistant') {
               cur.text += chunk
               store.saveTranscript(sessionId, t)
@@ -1366,8 +1371,7 @@ export class SessionManager {
           if (live.currentAssistantId) {
             const entryId = live.currentAssistantId
             live.currentAssistantId = null
-            const t = this.transcript(sessionId)
-            const cur = t.find((e) => e.id === entryId)
+            const cur = findEntry(this.transcript(sessionId), entryId)
             const finalText = text || (cur?.kind === 'assistant' ? cur.text : '')
             this.replaceEntry(sessionId, {
               kind: 'assistant',
