@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { envForProfile } from './profiles'
+import { envForProfile, loginCommand } from './profiles'
 
 const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'greed-security-'))
 fs.writeFileSync(
@@ -42,5 +42,16 @@ describe.runIf(process.platform === 'darwin')('envForProfile no perfil padrão',
   it('perfil nomeado sempre leva a pasta', () => {
     const other = path.join(os.homedir(), '.claude-trabalho')
     expect(configDirFor(other, { plain: login(2000) })).toBe(other)
+  })
+})
+
+describe('loginCommand', () => {
+  it('perfil padrão usa o login puro', () => {
+    expect(loginCommand(path.join(os.homedir(), '.claude'))).toBe('claude auth login')
+  })
+  it('perfil nomeado leva a pasta', () => {
+    expect(loginCommand(path.join(os.homedir(), '.claude-work'))).toBe(
+      'CLAUDE_CONFIG_DIR=~/.claude-work claude auth login',
+    )
   })
 })

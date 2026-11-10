@@ -93,3 +93,13 @@ export function envForProfile(profileDir: string | null): Record<string, string 
     CLAUDE_CONFIG_DIR: dir && (!isDefault || loginIsScoped(dir)) ? dir : undefined,
   }
 }
+
+/** Comando de terminal que refaz o login da assinatura no perfil. */
+export function loginCommand(profileDir: string | null): string {
+  const dir = profileDir ?? defaultProfileDir()
+  const isDefault = !dir || path.resolve(dir) === path.join(os.homedir(), '.claude')
+  if (isDefault) return 'claude auth login'
+  const home = os.homedir()
+  const shown = dir.startsWith(home + path.sep) ? `~${dir.slice(home.length)}` : dir
+  return `CLAUDE_CONFIG_DIR=${shown} claude auth login`
+}
