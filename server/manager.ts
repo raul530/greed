@@ -30,7 +30,7 @@ import { FleetLog } from './fleet'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
 import { captureTurn, memoryLength, memorySince, memoryTools, renderMemory } from './memory'
-import { envForProfile } from './profiles'
+import { envForProfile, loginCommand } from './profiles'
 import type { ProjectRegistry } from './projects'
 import { findAllFiles, PREVIEW_EXT, PREVIEW_MAX } from './preview'
 import { store } from './store'
@@ -1417,7 +1417,10 @@ export class SessionManager {
           this.addEntry(sessionId, {
             kind: 'error',
             id: uid(),
-            text: `Erro do modelo: ${String(msg.error)}`,
+            text:
+              msg.error === 'authentication_failed'
+                ? `Erro do modelo: authentication_failed. O login da assinatura expirou. Rode no terminal: ${loginCommand(session.profile)} e mande a mensagem de novo.`
+                : `Erro do modelo: ${String(msg.error)}`,
             ts: now(),
           })
         }
