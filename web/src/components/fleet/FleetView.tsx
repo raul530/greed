@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FleetRun, FleetSpan, SessionMeta } from '../../../../shared/types'
 import { FleetFeed } from './FleetFeed'
+import { FleetField } from './FleetField'
 import { FleetRoster } from './FleetRoster'
 import { FleetTimeline } from './FleetTimeline'
 import { dur, shortTokens, useFleet, useNow } from './useFleet'
@@ -104,6 +105,10 @@ export function FleetView({ sessions, runs, spans, onOpen }: Props) {
             now={now}
           />
         )}
+      </section>
+
+      <section className="fl-panel fl-panel-field">
+        <FleetField units={fleet.units} onOpen={onOpen} />
       </section>
 
       <section className="fl-panel fl-panel-roster">
