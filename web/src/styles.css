@@ -4359,6 +4359,7 @@ kbd {
   grid-template-areas:
     'vitals vitals'
     'timeline timeline'
+    'field field'
     'roster feed'
     'recon recon';
   gap: 14px;
@@ -4479,6 +4480,9 @@ kbd {
 
 .fl-panel-timeline {
   grid-area: timeline;
+}
+.fl-panel-field {
+  grid-area: field;
 }
 .fl-panel-roster {
   grid-area: roster;
@@ -5246,6 +5250,7 @@ kbd {
     grid-template-areas:
       'vitals'
       'timeline'
+      'field'
       'roster'
       'feed'
       'recon';
@@ -5295,4 +5300,65 @@ kbd {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--glow);
+}
+
+/* ── teatro de operações (base isométrica) ──────────── */
+
+.fl-field-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fl-field {
+  position: relative;
+  height: 300px;
+}
+
+.fl-field[data-hit='open'] {
+  cursor: pointer;
+}
+
+.fl-field canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fl-field-tip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 320px;
+  padding: 5px 8px;
+  font-size: 10px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 4px 14px var(--shadow);
+  pointer-events: none;
+  transform: translate(14px, -50%);
+}
+
+.fl-field-tip[data-side='left'] {
+  transform: translate(calc(-100% - 14px), -50%);
+}
+
+.fl-field-tip b {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glow);
+}
+
+@media (max-width: 640px) {
+  .fl-field {
+    height: 360px;
+  }
 }
