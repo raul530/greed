@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import type { MemoryBundle, MemoryImportResult } from '../shared/types'
 import { ask } from './ask'
+import { exportBundle, importBundle, parseBundle } from './membundle'
 import * as opt from './optmem'
 import { truncate } from './util'
 
@@ -350,6 +352,35 @@ export function captureTurn(input: {
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim()
+
+// ---------------------------------------------------------------- exportar / importar
+
+/** A memória inteira do projeto num pacote, pronta para virar arquivo. */
+export function exportMemory(projectId: string, projectName: string): MemoryBundle {
+  return exportBundle(ensure(projectId), projectName)
+}
+
+/**
+ * Importa um pacote para o projeto. Entra na mesma fila das capturas, então não
+ * disputa ids com um turno em andamento. As compressões que faltarem ficam para
+ * depois da resposta: a importação em si não espera o modelo.
+ */
+export async function importMemory(projectId: string, raw: unknown): Promise<MemoryImportResult> {
+  const bundle = parseBundle(raw)
+  const dir = ensure(projectId)
+  let result: MemoryImportResult | null = null
+  let failure: unknown = null
+  await enqueue(projectId, async () => {
+    try {
+      result = importBundle(dir, bundle)
+    } catch (err) {
+      failure = err
+    }
+  })
+  if (!result) throw failure instanceof Error ? failure : new Error('Falha ao importar a memória')
+  if ((result as MemoryImportResult).pending > 0) void enqueue(projectId, () => nap(projectId))
+  return result
+}
 
 // ---------------------------------------------------------------- tools
 

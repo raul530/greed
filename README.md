@@ -120,6 +120,14 @@ MEMORY_DIR=data/memory/<project-id> ~/.optmem/memo wake
 
 reading budget is 64 lines. change it per project in `data/memory/<project-id>/config`, or globally with `GREED_WAKE_LINES`. it is a reading budget, not a storage budget: change it whenever, nothing is recomputed.
 
+### sharing a project's memory
+
+a project's memory can be handed to someone else running greed. in the projects modal, the download icon on a project saves its whole memory as one file, `greed-memoria-<project>.json`: the full log plus every summary already built. send the file however you like.
+
+on the other side, the upload icon on any project imports it. into a project with no memory the result is byte identical to the source, tree included, so nothing is recompressed. into a project that already has memory, only the lines it does not have yet are appended, nothing is overwritten, and the new stretch is compressed in the background. importing the same file twice adds nothing.
+
+only the memory travels. attachments, the document index and `CLAUDE.md` stay in the project folder. imported lines go into the system prompt of every session in that project, so only import files from people you trust.
+
 old `data/memory/<project-id>.json` files are imported automatically on first run and kept as `.json.imported`.
 
 memory, titles and document descriptions all run on haiku with connectors and extended thinking off. those two flags matter a lot: with them on, a one line call was costing 22k input tokens and 10k thinking tokens.
