@@ -277,6 +277,21 @@ export function treeGet(dir: string, lo: number, hi: number): string | null {
   }
 }
 
+/** Os resumos já construídos de um nível, na ordem: o prefixo denso de TREE/<size>. */
+export function treeLevel(dir: string, size: number, max: number): string[] {
+  let buf: Buffer
+  try {
+    buf = fs.readFileSync(treePath(dir, size))
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  for (let i = 0; i + TREE_REC <= buf.length && out.length < max; i += TREE_REC) {
+    out.push(buf.subarray(i, i + TREE_REC).toString('utf8').replace(/\s+$/, ''))
+  }
+  return out
+}
+
 // ---------------------------------------------------------------- writes
 
 /**

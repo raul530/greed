@@ -9,7 +9,7 @@ import { commandsFor } from './commands'
 import { Hub } from './hub'
 import { buildInsights, buildMonth } from './insights'
 import { SessionManager } from './manager'
-import { warmMemory } from './memory'
+import { exportMemory, importMemory, memoryLength, warmMemory } from './memory'
 import { createHostGuard } from './net'
 import { defaultProfileDir, listProfiles } from './profiles'
 import { describeThread, findThreadFile, listThreads, readThreadEntries } from './threads'
@@ -36,6 +36,9 @@ app.use((req, res, next) => {
   }
   next()
 })
+
+// corpo cru, para as rotas que recebem arquivo (anexos, memória importada)
+const rawBody = express.raw({ type: '*/*', limit: '64mb' })
 
 const projects = new ProjectRegistry()
 const server = http.createServer(app)
@@ -213,6 +216,63 @@ app.delete('/api/projects/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+// ── memória: levar a de um projeto para o Greed de outra pessoa ──
+
+// quantas memórias cada projeto tem, para o modal de projetos
+app.get('/api/memory', (_req, res) => {
+  const totals: Record<string, number> = {}
+  for (const p of projects.list()) totals[p.id] = memoryLength(p.id)
+  res.json({ totals })
+})
+
+// baixa a memória do projeto num arquivo só
+app.get('/api/projects/:id/memory/export', (req, res) => {
+  try {
+    const project = projects.get(req.params.id)
+    if (!project) throw new Error('Projeto não encontrado')
+    const bundle = exportMemory(project.id, project.name)
+    if (bundle.entries.length === 0) throw new Error('Esse projeto ainda não tem memória')
+    const slug =
+      project.name
+        .normalize('NFD')
+        .replace(/[^\w\- ]+/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .toLowerCase() || 'projeto'
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="greed-memoria-${slug}.json"`)
+    res.send(JSON.stringify(bundle, null, 1))
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Recebe o arquivo exportado e junta à memória do projeto. O conteúdo vai parar
+// no system prompt de toda sessão do projeto, então a rota só aceita o que a
+// própria interface manda: octet-stream obriga preflight num POST cross-site, e
+// uma Origin de fora é recusada.
+app.post('/api/projects/:id/memory/import', rawBody, async (req, res) => {
+  try {
+    if (!req.is('application/octet-stream')) throw new Error('Envie o arquivo como octet-stream')
+    if (req.headers.origin && !guard.allowsOrigin(req.headers.origin)) {
+      res.status(403).json({ error: 'Origin não permitida' })
+      return
+    }
+    const project = projects.get(req.params.id)
+    if (!project) throw new Error('Projeto não encontrado')
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error('Arquivo vazio')
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(req.body.toString('utf8'))
+    } catch {
+      throw new Error('Arquivo não é uma memória do Greed')
+    }
+    res.json(await importMemory(project.id, parsed))
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 app.get('/api/profiles', (_req, res) => {
   res.json({ profiles: listProfiles(), default: defaultProfileDir() })
 })
@@ -311,8 +371,6 @@ function saveAttachment(
   fs.writeFileSync(abs, body)
   return { name: safeName, rel: path.join('greed-anexos', safeName), abs, bytes: body }
 }
-
-const rawBody = express.raw({ type: '*/*', limit: '64mb' })
 
 app.post('/api/sessions/:id/attachments', rawBody, (req, res) => {
   try {

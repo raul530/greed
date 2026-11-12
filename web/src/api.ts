@@ -2,6 +2,7 @@ import type {
   BtwExchange,
   ClaudeThread,
   InsightsReport,
+  MemoryImportResult,
   MonthReport,
   MsgAttachment,
   Profile,
@@ -62,6 +63,17 @@ export const api = {
     }),
   removeProject: (id: string) =>
     j<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // quantas memórias cada projeto tem
+  memoryTotals: () => j<{ totals: Record<string, number> }>('/api/memory'),
+  // link de download da memória do projeto num arquivo só
+  memoryExportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/memory/export`,
+  // sobe um arquivo exportado por outro Greed e junta à memória do projeto
+  importMemory: (id: string, file: File) =>
+    j<MemoryImportResult>(`/api/projects/${encodeURIComponent(id)}/memory/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    }),
   newSession: (
     projectId: string,
     prompt: string,
