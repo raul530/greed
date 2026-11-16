@@ -6,6 +6,7 @@ export interface Option {
 // IDs explícitos de modelo — a versão fica visível, importa pro consumo.
 export const MODELS: Option[] = [
   { value: '', label: 'Padrão' },
+  { value: 'claude-fable-5-2', label: 'Fable 5.2' },
   { value: 'claude-fable-5-1', label: 'Fable 5.1' },
   { value: 'claude-fable-5', label: 'Fable 5' },
   { value: 'claude-opus-5-5', label: 'Opus 5.5' },
