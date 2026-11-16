@@ -351,3 +351,27 @@ export type ServerMsg =
   | { type: 'btw'; exchange: BtwExchange }
   /** consumo da assinatura; usage null + error quando não deu pra ler */
   | { type: 'usage'; usage: UsageSnapshot | null; error: string | null }
+
+/** A memória de um projeto exportada num arquivo, para outra pessoa importar no Greed dela. */
+export interface MemoryBundle {
+  kind: 'greed-memory'
+  version: 1
+  /** nome do projeto de origem, só para quem importa saber o que está abrindo */
+  project: string
+  exportedAt: string
+  /** o log inteiro, na ordem em que foi escrito */
+  entries: Array<{ date: string; text: string }>
+  /** resumos já construídos: tamanho do bloco -> resumos daquele nível, na ordem */
+  tree: Record<string, string[]>
+}
+
+export interface MemoryImportResult {
+  /** memórias que entraram */
+  added: number
+  /** memórias do arquivo que o projeto já tinha */
+  skipped: number
+  /** tamanho da memória do projeto depois da importação */
+  total: number
+  /** resumos que ainda vão ser construídos em segundo plano */
+  pending: number
+}

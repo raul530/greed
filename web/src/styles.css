@@ -3431,6 +3431,52 @@ kbd {
   font: 10px var(--mono);
 }
 
+/* o texto encolhe; os botões da linha não */
+.project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-info .project-path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-mem {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* confirmação antes de importar a memória de um arquivo */
+.memory-import {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--primary);
+  border-radius: var(--r);
+  background: var(--fill-faint);
+}
+
+.memory-import p {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.memory-import .modal-hint {
+  margin-bottom: 0;
+}
+
+.modal-notice {
+  margin: 0 0 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .project-add {
   display: grid;
   grid-template-columns: 1fr 1.6fr auto auto;
