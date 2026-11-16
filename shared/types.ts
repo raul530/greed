@@ -50,7 +50,7 @@ export interface SessionMeta {
   projectName: string
   title: string
   sdkSessionId: string | null
-  /** id do modelo (ex.: 'claude-opus-5', 'claude-fable-5'); null = padrão da assinatura */
+  /** id do modelo (ex.: 'claude-opus-5-5', 'claude-fable-5-2'); null = padrão da assinatura */
   model: string | null
   /** nível de esforço/raciocínio ('low'..'max'); null = padrão do modelo */
   effort: string | null
