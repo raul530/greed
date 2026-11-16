@@ -275,3 +275,112 @@ describe.skipIf(!ip)('bind na rede (GREED_HOST + GREED_ALLOWED_HOSTS)', () => {
     }
   })
 })
+
+// ── arquivamento automático: chat parado sai do board na subida ────────────
+
+const DIA = 24 * 60 * 60 * 1000
+
+function chatSalvo(id: string, diasParado: number, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    projectId: 'p1',
+    projectName: 'Teste',
+    title: id,
+    sdkSessionId: null,
+    model: null,
+    effort: null,
+    permissionMode: 'default',
+    codebasePath: null,
+    profile: null,
+    open: true,
+    status: 'idle',
+    attention: null,
+    createdAt: Date.now() - 40 * DIA,
+    updatedAt: Date.now() - diasParado * DIA,
+    lastError: null,
+    ...over,
+  }
+}
+
+function semearChats(cwd: string): void {
+  fs.mkdirSync(path.join(cwd, 'data'), { recursive: true })
+  fs.writeFileSync(
+    path.join(cwd, 'data', 'sessions.json'),
+    JSON.stringify([
+      chatSalvo('velho', 8, { attention: 'finished' }),
+      chatSalvo('recente', 6),
+      chatSalvo('ja-fechado', 20, { open: false }),
+    ]),
+  )
+}
+
+interface ChatNoSnapshot {
+  id: string
+  open: boolean
+  attention: string | null
+  updatedAt: number
+  autoArchivedAt?: number | null
+}
+
+/** o estado que um navegador recebe ao conectar */
+function snapshot(port: number): Promise<Record<string, ChatNoSnapshot>> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+    const timer = setTimeout(() => {
+      ws.terminate()
+      reject(new Error('snapshot não chegou'))
+    }, 5000)
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw)) as { type: string; sessions?: ChatNoSnapshot[] }
+      if (msg.type !== 'snapshot') return
+      clearTimeout(timer)
+      ws.close()
+      resolve(Object.fromEntries((msg.sessions ?? []).map((s) => [s.id, s])))
+    })
+    ws.on('error', reject)
+  })
+}
+
+describe('arquivamento automático', () => {
+  it('na subida, só o chat parado há mais de 7 dias vai para o histórico', async () => {
+    const antes = Date.now()
+    const srv = await boot({ GREED_ARCHIVE_DAYS: '' }, semearChats)
+    try {
+      const s = await snapshot(srv.port)
+      expect(s.velho.open).toBe(false)
+      expect(s.velho.attention).toBeNull()
+      expect(s.velho.autoArchivedAt).toBeGreaterThanOrEqual(antes)
+      // a data continua sendo a do último uso, não a do arquivamento
+      expect(s.velho.updatedAt).toBeLessThan(antes - 7 * DIA)
+      expect(s.recente.open).toBe(true)
+      expect(s.recente.autoArchivedAt ?? null).toBeNull()
+      // fechado à mão antes: continua fechado, sem a marca
+      expect(s['ja-fechado'].open).toBe(false)
+      expect(s['ja-fechado'].autoArchivedAt ?? null).toBeNull()
+      // e foi para o disco
+      const disco = JSON.parse(fs.readFileSync(path.join(srv.cwd, 'data', 'sessions.json'), 'utf8')) as ChatNoSnapshot[]
+      expect(disco.find((x) => x.id === 'velho')?.open).toBe(false)
+
+      // reabrir tira a marca e zera a contagem
+      const r = await fetch(`http://127.0.0.1:${srv.port}/api/sessions/velho/reopen`, { method: 'POST' })
+      expect(r.status).toBe(200)
+      const depois = await snapshot(srv.port)
+      expect(depois.velho.open).toBe(true)
+      expect(depois.velho.autoArchivedAt ?? null).toBeNull()
+      expect(depois.velho.updatedAt).toBeGreaterThanOrEqual(antes)
+    } finally {
+      await srv.stop()
+    }
+  }, 60000)
+
+  it('GREED_ARCHIVE_DAYS=0 desliga', async () => {
+    const srv = await boot({ GREED_ARCHIVE_DAYS: '0' }, semearChats)
+    try {
+      const s = await snapshot(srv.port)
+      expect(s.velho.open).toBe(true)
+      expect(s.velho.attention).toBe('finished')
+    } finally {
+      await srv.stop()
+    }
+  }, 60000)
+})
