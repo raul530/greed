@@ -29,6 +29,7 @@ import { ingestDoc, renderDocCatalog } from './docs'
 import { FleetLog } from './fleet'
 import type { Hub } from './hub'
 import { loadProjectMcpServers } from './mcp'
+import { staleSessions } from './archive'
 import { captureTurn, memoryLength, memorySince, memoryTools, renderMemory } from './memory'
 import { envForProfile, loginCommand } from './profiles'
 import type { ProjectRegistry } from './projects'
@@ -904,10 +905,33 @@ export class SessionManager {
     this.hub.broadcast({ type: 'session_gone', sessionId })
   }
 
+  /**
+   * Manda para o histórico os chats parados há mais de `days` dias. É o mesmo
+   * que fechar o card, com uma diferença: o `updatedAt` não é mexido, então o
+   * histórico continua mostrando e ordenando pela última vez que o chat foi
+   * usado, não pela hora em que foi arquivado. Devolve quantos saíram.
+   */
+  archiveStale(days: number, nowTs = now()): number {
+    const stale = staleSessions(this.sessions.values(), nowTs, days).filter(
+      // pedido de permissão em aberto: alguém ainda deve uma resposta a este chat
+      (s) => (this.live.get(s.id)?.pending.size ?? 0) === 0,
+    )
+    if (stale.length === 0) return 0
+    for (const s of stale) {
+      s.open = false
+      s.attention = null
+      s.autoArchivedAt = nowTs
+      if (this.live.has(s.id)) this.endLive(s.id)
+    }
+    this.save()
+    for (const s of stale) this.hub.broadcast({ type: 'session', session: s })
+    return stale.length
+  }
+
   reopenCard(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
-    this.touch(session, { open: true })
+    this.touch(session, { open: true, autoArchivedAt: null })
     this.hub.broadcast({ type: 'transcript', sessionId, entries: this.transcript(sessionId) })
     const live = this.live.get(sessionId)
     if (live) {

@@ -66,6 +66,8 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
   lastError: string | null
+  /** quando o servidor tirou o chat do board por inatividade; some ao reabrir */
+  autoArchivedAt?: number | null
   /** consumo deste chat; ausente em sessões criadas antes da contagem existir */
   usage?: SessionUsage | null
 }

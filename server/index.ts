@@ -5,6 +5,7 @@ import path from 'node:path'
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import type { MsgAttachment, UsageSnapshot } from '../shared/types'
+import { ARCHIVE_SWEEP_MS, archiveDays } from './archive'
 import { commandsFor } from './commands'
 import { Hub } from './hub'
 import { buildInsights, buildMonth } from './insights'
@@ -474,12 +475,26 @@ server.listen(PORT, guard.bindHost, () => {
   }
   // migra a memória para o OptMem e adianta as compressões, antes de qualquer sessão
   warmMemory(projects.list().map((p) => p.id))
+  sweepStale()
 })
+
+// Chat parado há mais de GREED_ARCHIVE_DAYS dias (padrão 7) sai do board e vai
+// para o histórico. Roda na subida e depois de hora em hora; 0 desliga.
+const ARCHIVE_DAYS = archiveDays(process.env.GREED_ARCHIVE_DAYS)
+function sweepStale(): void {
+  const n = manager.archiveStale(ARCHIVE_DAYS)
+  if (n > 0) {
+    console.log(`[greed] ${n} chat(s) sem uso há mais de ${ARCHIVE_DAYS} dia(s) foram para o histórico`)
+  }
+}
+const archiveTimer = setInterval(sweepStale, ARCHIVE_SWEEP_MS)
+archiveTimer.unref()
 
 let closing = false
 function shutdown(code = 0): void {
   if (closing) return
   closing = true
+  clearInterval(archiveTimer)
   usagePoller.stop()
   manager.shutdown()
   store.flush()

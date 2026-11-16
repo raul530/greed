@@ -58,6 +58,7 @@ export function HistoryPanel({ sessions, onClose, onReopen, onRename, onDelete }
                       <span className="history-title">{s.title}</span>
                       <span className="history-meta">
                         {s.projectName} · {when(s.updatedAt)}
+                        {s.autoArchivedAt != null && ' · arquivado por inatividade'}
                         {s.status === 'working' && ' · ainda trabalhando'}
                         {s.attention === 'waiting' && ' · ⚠ esperando você'}
                         {s.attention === 'finished' && ' · ✓ terminou'}
